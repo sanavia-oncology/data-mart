@@ -1,0 +1,146 @@
+.navbar {
+    box-shadow: inset 0 -4px 7px #030e8d;
+    padding-top: 0.15rem;
+    padding-bottom: 0.15rem;
+    color: white;
+}
+
+.navbar-brand {
+    padding-top: 0.05rem;
+}
+
+.navbar-dark .navbar-nav .nav-link {
+    color: rgba(255,255,255,.70);
+}
+
+.navbar-dark .navbar-nav .nav-link:focus, .navbar-dark .navbar-nav .nav-link:hover {
+    color: rgba(255,255,255,.90);
+}
+
+.nav-custom-banner {
+    padding: 0.5rem 1rem;
+    color: white;
+}
+
+.nav-custom-banner a{
+    color: #a194f1;
+    text-decoration: underline;
+}
+
+.nav-custom-banner a:hover{
+    color: #c5bcff;
+}
+
+/* footer div */
+#footer-div {
+    margin-top: 50px;
+}
+
+/* Header for Portal, About, Docs, Resources, Help */ 
+#header-portal {
+    background-position: center 10%;
+    background-size: cover;
+    background: #31387d;
+    padding: 20px 0;
+    color: white;
+    margin-bottom: 30px;
+}
+
+/* Cards for portal */
+#portal-cards {
+    margin-top: 10px;
+}
+
+#portal-cards .card {
+    background: #31387d;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+#portal-cards .card:hover {
+    background: rgba(1, 4, 44, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+#portal-cards .card p {
+    min-height: 95px;
+}
+
+#portal-cards .stretched-link::after {
+    cursor: pointer !important;
+    z-index: 100;
+}
+
+#portal-cards .card, #header-cards .stretched-link {
+    cursor: pointer !important;
+}
+
+/* Header for sequence analysis */
+#header-sequence-analysis {
+    background-position: center 30%;
+    background-size: cover;
+    background-image: url('/static/img/header-v9.jpg');
+    background-color: #030309;
+    padding: 50px 0;
+    color: white;
+    margin-bottom: 30px;
+}
+
+/* Header for antibody explorer */
+#header-antibody-explorer {
+    background-position: center 5%;
+    background-size: cover;
+    background-image: url('/static/img/header-v6.jpg');
+    background-color: #030309;
+    padding: 50px 0;
+    color: white;
+    margin-bottom: 30px;
+}
+
+/* Header for humanization and developability */
+#header-humanization-developability {
+    background-position: center 5%;
+    background-size: cover;
+    background-image: url('/static/img/header-v7.jpg');
+    background-color: #030309;
+    padding: 50px 0;
+    color: white;
+    margin-bottom: 30px;
+}
+
+/* Header for structural analysis */
+#header-structural-analysis {
+    background-position: center 10%;
+    background-size: cover;
+    background-image: url('/static/img/header-v12.jpg');
+    background-color: #030309;
+    padding: 50px 0;
+    color: white;
+    margin-bottom: 30px;
+}
+
+#header-cards {
+    margin-top: 50px;
+}
+
+#header-cards .card {
+    background: rgba(37, 48, 162, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+#header-cards .card:hover {
+    background: rgba(9, 0, 60, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+#header-cards .card p {
+    min-height: 95px;
+}
+
+#header-cards .stretched-link::after {
+    cursor: pointer !important;
+    z-index: 100;
+}
+
+#header-cards .card, #header-cards .stretched-link {
+    cursor: pointer !important;
+}
