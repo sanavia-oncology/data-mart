@@ -40,9 +40,9 @@
 #header-portal {
     background-position: center 10%;
     background-size: cover;
-    background: #31387d;
+    background: rgb(214, 209, 196);
     padding: 20px 0;
-    color: white;
+    color: black;
     margin-bottom: 30px;
 }
 
