@@ -1,21 +1,6 @@
 # Kwame Okrah
 # 2026-05-23
 
-sub_table_merged_sheet = function(ms) {
-    sel = c("Order ID", 
-            "Protein Name", 
-            "Purity by SEC-HPLC(%)", 
-            "Concentration(mg/ml)",
-            "Box Name",
-            "Position",
-            "Volume(ml)",
-            "Box Type",
-            "Merge Date")
-    ms_sub = ms[,sel,drop=F]
-    ms_sub
-}
-
-
 plot_merged_sheet = function(ms, fig_path=NULL) {
     order_id = sapply(strsplit(ms[["Order ID"]][1], "-"), "[[", 1)
     conc = ms[["Concentration(mg/ml)"]]
@@ -52,7 +37,9 @@ plot_merged_sheet = function(ms, fig_path=NULL) {
 }
 
 
-front_page_table = function(merged_sheets_list) {
+front_page_table = function(merged_sheets_list, 
+                            status=NULL,
+                            order_type=NULL) {
     odate = names(merged_sheets_list)
     odate = paste0(substr(odate, 1, 4), "-", 
                    substr(odate, 5, 6), "-", 
@@ -66,8 +53,14 @@ front_page_table = function(merged_sheets_list) {
                  function(x) sapply(strsplit(x[["Order ID"]][1], "-"), "[[", 1))
     n_mol = sapply(merged_sheets_list, nrow)
 
-    status = rep("in_transit", length(oid))
-    order_type = rep("new_order", length(oid))
+    if (is.null(status)) {
+        status = rep("to_implement", length(oid))    
+    }
+    
+    if (is.null(order_type)) {
+        order_type = rep("to_implement", length(oid))    
+    }
+    
     
     df = data.frame("Date"=odate,
                     "Order ID"=oid,

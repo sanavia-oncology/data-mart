@@ -2,11 +2,11 @@
 # date: 2026-03-04
 
 server = function(input, output, session) {
-    path_to_app = "/Users/kwameokrah/sanavia_apps/data-mart/apps/order-recvd-mart/"
+    path_to_app = "/Users/kwameokrah/sanavia_apps/data-mart/apps/order-recvd-mart"
     
     # step 0
     # project_fldr
-    project_fldr = "/Users/kwameokrah/claude_code/shiny/data/genscript-recvd"
+    project_fldr = "/Users/kwameokrah/data_depo/genscript-recvd"
     
     # organize file paths by order
     order_files_paths = get_paths_by_order(project_fldr)
@@ -31,7 +31,12 @@ server = function(input, output, session) {
         merged_sheets_list[[order_folder]] = dat
     }
     
-    table_front_page = front_page_table(merged_sheets_list)
+    status = rep("received", length(merged_sheets_list))
+    order_type = rep("new_order", length(merged_sheets_list))
+    
+    table_front_page = front_page_table(merged_sheets_list,
+                                        status,
+                                        order_type)
     
     names(merged_sheets_list) = sapply(strsplit(names(merged_sheets_list), 
                                                 "_Order_"), "[[", 2)
@@ -47,7 +52,7 @@ server = function(input, output, session) {
             table_front_page
         }, 
         selection = "single",
-        options = list(pageLength = 6,  
+        options = list(pageLength=6,  
                        dom = "tpf",
                        columnDefs = list(
                            list(className = 'dt-nowrap', targets = '_all'))
@@ -60,13 +65,7 @@ server = function(input, output, session) {
                    class="text-secondary"),
             DT::dataTableOutput("table"),
             tags$br(),
-            tags$div(
-                tags$p("Last Upload/Sync Date", 
-                       class="h5 text-secondary fw-bold"),
-                tags$p("The last time this dataset was updated.",
-                       class="text-secondary"),
-                tags$p("Put date here", 
-                       class="h5 text-secondary"))
+            tags$div(tags$p(paste0("Last update: ", Sys.Date())))
         )
         
         # column 2

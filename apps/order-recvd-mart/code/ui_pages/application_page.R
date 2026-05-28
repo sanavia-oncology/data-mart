@@ -58,7 +58,7 @@ application_page = bslib::nav_panel(
     ),
           
     title = "Download Orders",
-    page_banner("Download Received Order Sheets"),
+    page_banner("Download Shipped Order Sheets"),
     
     app_card
 )
