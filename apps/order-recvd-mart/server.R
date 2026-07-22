@@ -6,7 +6,7 @@ server = function(input, output, session) {
     
     # step 0
     # project_fldr
-    project_fldr = "/Users/kwameokrah/data_depo/genscript-recvd"
+    project_fldr = "/Users/kwameokrah/data-depot/01-genscript-recvd"
     
     # organize file paths by order
     order_files_paths = get_paths_by_order(project_fldr)
