@@ -1,2 +1,44 @@
-.DS_Store
+# Secrets — .env* is deliberately broad, only templates are un-ignored.
+.env*
+!.env.example
+*-creds.txt
+*secret*
+*.pem
+*.key
+*.p12
+.netrc
 
+# Python
+__pycache__/
+*.py[cod]
+benchling-python-env/
+.venv/
+venv/
+*.egg-info/
+
+# R
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+
+# Run artifacts
+logs/
+*.log
+
+# Order data — carries customer and sample info, stays local
+*.csv
+*.xlsx
+*.xls
+
+# Stale render of docs/genscript_uploader.html; embeds a real order id
+apps/order-upload/docs/genscript_uploader.pdf
+
+# Editor and tooling
+.claude/
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store

@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GenScript → Benchling — Code Walkthrough</title>
+<style>
+  :root{
+    --bg:#ffffff; --ink:#1a2230; --muted:#5b6675; --line:#e6eaf0; --soft:#f5f7fa;
+    --accent:#0e7c86; --accent-ink:#0b5b63; --amber:#b45309;
+    --code-bg:#0f1a24; --code-ink:#d6e2ee; --radius:12px;
+    --entry:#4f46e5; --parse:#0e7c86; --push:#0891b2; --io:#7c3aed; --persist:#b45309;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0d141c; --ink:#e7edf4; --muted:#94a2b3; --line:#232f3c; --soft:#141e28;
+      --accent:#2dd4bf; --accent-ink:#5eead4; --amber:#fbbf24;
+      --code-bg:#0a1119; --code-ink:#cdd9e6;
+      --entry:#a5b4fc; --parse:#2dd4bf; --push:#22d3ee; --io:#c4b5fd; --persist:#fbbf24;
+    }
+  }
+  :root[data-theme="light"]{--bg:#fff;--ink:#1a2230;--muted:#5b6675;--line:#e6eaf0;--soft:#f5f7fa;--accent:#0e7c86;--accent-ink:#0b5b63;--amber:#b45309;--code-bg:#0f1a24;--code-ink:#d6e2ee;--entry:#4f46e5;--parse:#0e7c86;--push:#0891b2;--io:#7c3aed;--persist:#b45309}
+  :root[data-theme="dark"]{--bg:#0d141c;--ink:#e7edf4;--muted:#94a2b3;--line:#232f3c;--soft:#141e28;--accent:#2dd4bf;--accent-ink:#5eead4;--amber:#fbbf24;--code-bg:#0a1119;--code-ink:#cdd9e6;--entry:#a5b4fc;--parse:#2dd4bf;--push:#22d3ee;--io:#c4b5fd;--persist:#fbbf24}
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);line-height:1.6;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  code,pre,kbd{font-family:"SF Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace}
+  .wrap{max-width:860px;margin:0 auto;padding:34px 22px 90px}
+
+  header.hd{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:clamp(23px,4.2vw,31px);line-height:1.15;margin:.1em 0 .3em;letter-spacing:-.02em}
+  .sub{color:var(--muted);margin:0;max-width:64ch}
+  .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--accent-ink);background:var(--soft);white-space:nowrap}
+  #theme{appearance:none;border:1px solid var(--line);background:var(--soft);color:var(--ink);border-radius:9px;padding:6px 10px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+
+  h2{font-size:19px;margin:38px 0 10px;letter-spacing:-.01em;scroll-margin-top:14px;padding-top:10px;border-top:1px solid var(--line)}
+  h2:first-of-type{border-top:0}
+  h2 .n{color:var(--accent-ink);font-variant-numeric:tabular-nums;margin-right:8px}
+  h3{font-size:13.5px;margin:18px 0 6px;color:var(--ink);text-transform:uppercase;letter-spacing:.04em}
+  h3 code{text-transform:none;font-size:13px;color:var(--accent-ink)}
+  p{margin:.5em 0;color:var(--muted)}
+  p strong,li strong,td strong{color:var(--ink)}
+  a{color:var(--accent-ink)}
+
+  .toc{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0 4px}
+  .toc a{font-size:12.5px;text-decoration:none;color:var(--muted);border:1px solid var(--line);background:var(--soft);border-radius:99px;padding:4px 11px}
+  .toc a:hover{border-color:var(--accent);color:var(--accent-ink)}
+
+  pre{background:var(--code-bg);color:var(--code-ink);border-radius:var(--radius);padding:14px 16px;overflow:auto;font-size:12.5px;line-height:1.6;margin:.6em 0}
+  pre .c{color:#7d90a4} pre .k{color:#7dd3fc} pre .fn{color:#fcd34d} pre .s{color:#a7f3d0} pre .d{color:#c4b5fd}
+  code.i{background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:.5px 5px;font-size:.88em;color:var(--ink)}
+
+  table{width:100%;border-collapse:collapse;margin:.6em 0;font-size:13px;display:block;overflow-x:auto}
+  th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}
+  td:last-child,th:last-child{white-space:normal}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+  td code,th code{color:var(--ink)}
+
+  ul,ol{margin:.4em 0;padding-left:1.15em}
+  li{margin:.26em 0;color:var(--muted)}
+
+  .callout{border-left:3px solid var(--amber);background:color-mix(in oklab,var(--amber) 9%,transparent);
+    padding:9px 13px;border-radius:0 9px 9px 0;font-size:13px;color:var(--ink);margin:.8em 0}
+  .callout b{color:var(--amber)}
+
+  /* control-flow chart */
+  .chart{margin:14px 0 6px}
+  .fnode{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;
+    border:1px solid var(--line);border-left:3px solid var(--pc,var(--accent));border-radius:11px;
+    padding:11px 14px;background:var(--soft)}
+  .fnode .t{font-weight:700;color:var(--ink);font-size:14.5px}
+  .fnode .t code{font-size:13px;color:var(--ink)}
+  .fnode .d{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .fnode .mod{font-size:10.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;
+    color:#fff;background:var(--pc,var(--accent));border-radius:6px;padding:3px 8px;white-space:nowrap}
+  .conn{display:flex;flex-direction:column;align-items:center;color:var(--muted);padding:3px 0}
+  .conn .line{width:2px;height:14px;background:var(--line)}
+  .conn .lbl{font-size:11px;color:var(--muted);margin:2px 0}
+  .conn .tri{color:var(--line);font-size:13px;line-height:1;margin-top:-2px}
+
+  .loop{border:1.5px dashed color-mix(in oklab,var(--entry) 55%,var(--line));border-radius:14px;padding:12px 14px;background:color-mix(in oklab,var(--entry) 6%,transparent)}
+  .loop .lh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+  .loop .lh b{color:var(--ink);font-size:14.5px}
+  .loop .badge{font-size:11px;font-weight:700;color:#fff;background:var(--entry);border-radius:99px;padding:3px 10px}
+  .cycle{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12.5px;margin:6px 0 4px}
+  .cycle .b{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 10px;font-weight:600}
+  .cycle .b.build{border-color:var(--parse);color:var(--parse)}
+  .cycle .b.push{border-color:var(--push);color:var(--push)}
+  .cycle .b.persist{border-color:var(--persist);color:var(--persist)}
+  .cycle .ar{color:var(--muted)}
+
+  /* module / layer diagram */
+  .layers{margin:12px 0}
+  .band{border:1px solid var(--line);border-radius:11px;padding:11px 14px;background:var(--soft)}
+  .band .bt{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+  .band .bn{font-weight:700;color:var(--ink)}
+  .band .bn code{color:var(--ink);font-size:13.5px}
+  .band .bd{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:640px){.split{grid-template-columns:1fr}}
+  .between{display:grid;grid-template-columns:1fr 1fr;gap:12px;color:var(--muted);font-size:11.5px;text-align:center;padding:4px 0}
+  .between span::before{content:"▼ ";color:var(--line)}
+  .midjoin{text-align:center;color:var(--muted);font-size:11.5px;padding:4px 0}
+  .midjoin::before{content:"▼ ";color:var(--line)}
+  .aside{margin-top:12px;border:1px dashed var(--line);border-radius:11px;padding:10px 14px;font-size:12.5px;color:var(--muted)}
+  .aside b{color:var(--ink)}
+
+  @media print{
+    #theme,.toc{display:none}
+    pre,table,.fnode,.band,.loop,.deep,.callout{break-inside:avoid}
+    h2{break-after:avoid}
+    pre{font-size:10.5px;overflow:hidden}
+    table{overflow-x:hidden}
+  }
+  .deep{border:1px solid var(--line);border-radius:12px;padding:2px 16px 12px;margin:12px 0;background:var(--soft)}
+  .lede{color:var(--ink);font-size:13.5px;margin:12px 0 2px}
+  footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hd">
+    <div>
+      <span class="tag">Code walkthrough · developer reference</span>
+      <h1>GenScript → Benchling — how the code works</h1>
+      <p class="sub">Where execution starts, how a run flows through the modules, and what actually happens inside the parser and the pusher. For setup and how to run it, see the <code class="i">README</code>.</p>
+    </div>
+    <button id="theme" title="Toggle light/dark">◐ Theme</button>
+  </header>
+
+  <nav class="toc">
+    <a href="#entry">Entrypoint</a>
+    <a href="#flow">Execution flow</a>
+    <a href="#modules">Module map</a>
+    <a href="#phases">upload() loop</a>
+    <a href="#parser">Inside the parser</a>
+    <a href="#pusher">Inside the pusher</a>
+    <a href="#io">Shared I/O</a>
+    <a href="#where">Where things live</a>
+    <a href="#safety">Crash-safety</a>
+    <a href="#cleanup">Cleanup</a>
+  </nav>
+
+  <h2 id="entry"><span class="n">1</span>Entrypoint</h2>
+  <p>Everything starts at <code class="i">main()</code> in <code class="i">genscript_order_uploader.py</code> (the shell wrapper just updates, activates the env, and runs it):</p>
+  <pre><span class="c"># genscript_order_uploader.py  (abbreviated)</span>
+<span class="k">if</span> __name__ == <span class="s">"__main__"</span>:
+    sys.exit(<span class="fn">main</span>())
+
+<span class="k">def</span> <span class="fn">main</span>() -> int:
+    <span class="fn">load_dotenv</span>()
+    args = <span class="fn">parse_args</span>()                         <span class="c"># --csv, --env test, --location, --batch-size</span>
+
+    df           = <span class="fn">read_csv</span>(Path(args.csv))      <span class="c">┐ parse + validate</span>
+    tubes_by_row = <span class="fn">build_tubes</span>(df)               <span class="c">│ (no network — exits</span>
+    <span class="fn">validate_tubes</span>(tubes_by_row)                  <span class="c">┘ here on bad data)</span>
+
+    benchling         = <span class="fn">connect</span>(args.env)        <span class="c">┐ connect + look up ids</span>
+    registry_id       = benchling.registry...          <span class="c">│</span>
+    container_type_id = <span class="fn">resolve_dropdown</span>(...)     <span class="c">┘</span>
+
+    <span class="k">return</span> <span class="fn">upload</span>(benchling, df, tubes_by_row, ...)   <span class="c"># the five phases →</span></pre>
+  <p>So the whole run is: <strong>parse &amp; validate locally → connect → hand off to <code class="i">upload()</code></strong>, which does all the writing.</p>
+
+  <h2 id="flow"><span class="n">2</span>Execution flow</h2>
+  <p>Top to bottom is the order a single run executes. Nothing is written to Benchling until the validation gate is passed.</p>
+  <div class="chart">
+    <div class="fnode" style="--pc:var(--entry)">
+      <div><div class="t"><code>genscript_order_uploader.py</code> → <code>main()</code></div>
+        <div class="d"><code>load_dotenv()</code> then <code>parse_args()</code> — the entrypoint.</div></div>
+      <span class="mod">entry</span>
+    </div>
+    <div class="conn"><div class="line"></div><div class="tri">▼</div></div>
+    <div class="fnode" style="--pc:var(--parse)">
+      <div><div class="t">Read &amp; build — <code>read_csv → build_tubes</code></div>
+        <div class="d">Load the merged order CSV; explode the <code>|</code>-delimited per-tube columns into tube dicts.</div></div>
+      <span class="mod">parse</span>
+    </div>
+    <div class="conn"><div class="line"></div><div class="tri">▼</div></div>
+    <div class="fnode" style="--pc:var(--parse)">
+      <div><div class="t">Validation gate — <code>validate_tubes()</code></div>
+        <div class="d">Fail-fast on unknown box types, off-grid or duplicate positions. Exits <code>[LOCAL_PARSE] ERROR</code> before any write.</div></div>
+      <span class="mod">parse</span>
+    </div>
+    <div class="conn"><div class="line"></div><div class="lbl">only if valid</div><div class="tri">▼</div></div>
+    <div class="fnode" style="--pc:var(--io)">
+      <div><div class="t">Connect — <code>connect() → registry → resolve_dropdown()</code></div>
+        <div class="d">Build the client (120&nbsp;s timeout), grab the registry id, resolve the container-type dropdown option.</div></div>
+      <span class="mod">io · push</span>
+    </div>
+    <div class="conn"><div class="line"></div><div class="tri">▼</div></div>
+    <div class="loop">
+      <div class="lh"><b><code>upload()</code> — the writing happens here</b><span class="badge">5 phases</span></div>
+      <div class="cycle">
+        <span class="b build">build payloads</span><span class="ar">→</span>
+        <span class="b push">push in ≤100 chunks</span><span class="ar">→</span>
+        <span class="b persist">harvest new ids</span><span class="ar">→ next phase's build</span>
+      </div>
+      <p style="margin:6px 0 0;font-size:12.5px">Each phase repeats that cycle — the ids Benchling mints in one push become inputs to the next build. Details in <a href="#phases">§4</a>.</p>
+    </div>
+    <div class="conn"><div class="line"></div><div class="tri">▼</div></div>
+    <div class="fnode" style="--pc:var(--persist)">
+      <div><div class="t">Done — entities created in Benchling</div>
+        <div class="d">No result file: the tenant is the record, and per-phase progress is logged to the console. A failed run is undone by order id (§9).</div></div>
+      <span class="mod">tenant</span>
+    </div>
+  </div>
+
+  <h2 id="modules"><span class="n">3</span>Module map</h2>
+  <p>Five files in two layers. The orchestrator sequences the run; <strong>parse</strong> builds payloads with no network while <strong>push</strong> sends them; both stand on the shared I/O layer.</p>
+  <div class="layers">
+    <div class="band" style="border-left:3px solid var(--entry)">
+      <div class="bt">Entrypoint · orchestrator</div>
+      <div class="bn"><code>genscript_order_uploader.py</code></div>
+      <div class="bd"><code>main()</code> wires the run together; <code>upload()</code> drives the five phases.</div>
+    </div>
+    <div class="between"><span>builds with</span><span>pushes with</span></div>
+    <div class="split">
+      <div class="band" style="border-left:3px solid var(--parse)">
+        <div class="bt">Build · pure, no network</div>
+        <div class="bn"><code>genscript_parse.py</code></div>
+        <div class="bd"><code>read_csv</code>, <code>build_tubes</code>, <code>validate_tubes</code>, <code>build_*_payloads</code>. Holds schema ids, box grids &amp; field maps.</div>
+      </div>
+      <div class="band" style="border-left:3px solid var(--push)">
+        <div class="bt">Push · the network</div>
+        <div class="bn"><code>genscript_upload.py</code></div>
+        <div class="bd"><code>resolve_dropdown</code>, <code>create_boxes</code>, <code>run_bulk</code> (chunk → submit → wait → check), <code>entity_field</code>.</div>
+      </div>
+    </div>
+    <div class="midjoin">the pusher builds on · the parser only borrows <code>log()</code></div>
+    <div class="band" style="border-left:3px solid var(--io)">
+      <div class="bt">Shared helpers · bottom layer</div>
+      <div class="bn"><code>benchling_io.py</code></div>
+      <div class="bd"><strong>Network</strong> (pusher only): <code>connect</code> (120&nbsp;s timeout), <code>wait_for_task</code> (poll + retry). <strong>Pure utilities</strong>: <code>chunked</code>, and <code>log</code> — the parser's <em>only</em> tie to this file, used just for its override notice, so the parser stays network-free.</div>
+    </div>
+    <div class="aside"><b>dev-tools/cleanup_run.py</b> — undoes a run; reuses <code class="i">benchling_io</code> + <code class="i">genscript_parse.SCHEMAS</code> (adds the repo root to <code class="i">sys.path</code>). See <a href="commands.md">commands.md</a>.</div>
+  </div>
+
+  <h2 id="phases"><span class="n">4</span>The <code>upload()</code> loop</h2>
+  <p>Each phase builds its payloads locally (no network), then pushes them. Bulk creates and transfers go in ≤100-item chunks; boxes are created one at a time.</p>
+  <table>
+    <tr><th>#</th><th>Build — genscript_parse</th><th>Push — genscript_upload → SDK</th></tr>
+    <tr><td>1</td><td><code>build_sequence_payloads</code></td><td><code>run_bulk</code> → <code>aa_sequences.bulk_create</code></td></tr>
+    <tr><td>2</td><td><code>build_lot_payloads</code></td><td><code>run_bulk</code> → <code>custom_entities.bulk_create</code></td></tr>
+    <tr><td>3</td><td><code>build_box_payloads</code></td><td><code>create_boxes</code> → <code>boxes.create</code> (per box)</td></tr>
+    <tr><td>4</td><td><code>build_container_payloads</code></td><td><code>run_bulk</code> → <code>containers.bulk_create</code></td></tr>
+    <tr><td>5</td><td><code>build_transfer_requests</code></td><td><code>run_bulk</code> → <code>containers.transfer_into_containers</code></td></tr>
+  </table>
+  <p><strong>Later phases consume earlier ids</strong> — and those ids don't exist anywhere until a push returns them. How each one is minted and handed forward:</p>
+
+  <div class="deep">
+    <h3>Minted on push, fed to the next build</h3>
+    <p><code class="i">upload()</code> alternates build → push five times, and later builds consume ids minted by earlier pushes:</p>
+    <ol>
+      <li><strong>Sequences</strong> — <code class="i">build_sequence_payloads(df, registry_id)</code> builds locally (pure); the push creates the entities in Benchling and their new ids are harvested into <code class="i">sequence_ids</code>.</li>
+      <li><strong>Lots</strong> — <code class="i">sequence_ids</code> is passed as a plain argument into <code class="i">build_lot_payloads(...)</code>, so each lot links exactly its own sequences; the push yields <code class="i">lot_ids</code>.</li>
+      <li><strong>Boxes</strong> — built from local data alone (no minted ids needed); <code class="i">create_boxes</code> pushes them one at a time and returns <code class="i">box_id_by_key</code>.</li>
+      <li><strong>Containers</strong> — <code class="i">build_container_payloads(...)</code> uses <code class="i">box_id_by_key</code> to place each tube (<code class="i">parent_storage_id = "{box_id}:{pos}"</code>); the push yields <code class="i">container_ids</code>.</li>
+      <li><strong>Transfers</strong> — <code class="i">build_transfer_requests(...)</code> pairs <code class="i">lot_ids</code> with <code class="i">container_ids</code>; the final push creates the transfers and returns nothing — the chain ends.</li>
+    </ol>
+    <p>The only ids that exist <em>before</em> the run are the looked-up ones — <code class="i">registry_id</code> and <code class="i">container_type_id</code>, fetched read-only by <code class="i">main()</code> at connect time.</p>
+    <ul>
+      <li><strong>Ids cross the parse/push boundary only as function arguments</strong> — the parser never talks to Benchling, so it stays pure even though the run alternates build ↔ push.</li>
+      <li><strong>If phase <em>n</em> fails,</strong> everything from phases 1…<em>n</em>−1 already exists in the tenant with real ids; <code class="i">stage</code> names the failing phase and cleanup undoes it by order id (<a href="#safety">§9</a>). Per-row slicing of the flat id lists (<code class="i">seq_offsets</code>, <code class="i">box_key</code>) is the parser-side detail in <a href="#parser">§5d</a>.</li>
+    </ul>
+  </div>
+
+  <!-- ============ DEEP DIVE: PARSER ============ -->
+  <h2 id="parser"><span class="n">5</span>Inside the parser — <code>genscript_parse.py</code></h2>
+  <p class="lede">Pure functions: CSV → Benchling payloads, no network. (Its one <code class="i">benchling_io</code> import is just the <code class="i">log</code> helper.) Five stages:</p>
+
+  <div class="deep">
+    <h3>a · Reading the CSV — <code>read_csv</code></h3>
+    <p>Reads text-ish columns as strings (so ids, leading zeros, and <code class="i">|</code>/<code class="i">,</code>-delimited values survive), and fails fast on missing required columns.</p>
+    <pre><span class="fn">df_head</span> = pd.read_csv(path, nrows=<span class="s">0</span>)                 <span class="c"># header only</span>
+text_cols = [c <span class="k">for</span> c in _TEXT_COLS <span class="k">if</span> c in df_head.columns]   <span class="c"># text-typed, present</span>
+df = pd.read_csv(path, dtype={c: <span class="k">str</span> <span class="k">for</span> c in text_cols})
+missing = [c <span class="k">for</span> c in REQUIRED_CSV_COLUMNS <span class="k">if</span> c <span class="k">not in</span> df.columns]   <span class="c"># → sys.exit</span>
+<span class="k">for</span> col in text_cols: df[col] = df[col].fillna(<span class="s">""</span>).astype(<span class="k">str</span>).str.strip()</pre>
+  </div>
+
+  <div class="deep">
+    <h3>b · Exploding a row into tubes — <code>build_tubes</code></h3>
+    <p>The four per-tube columns are <code class="i">|</code>-delimited and column-parallel: the k-th slice of each describes tube&nbsp;k. Guards reject ragged rows; overrides fix known bad source data; positions are normalised.</p>
+    <pre>boxes = <span class="fn">split_pipe</span>(row[<span class="s">"Box Name"</span>]); types = <span class="fn">split_pipe</span>(row[<span class="s">"Box Type"</span>])
+poss  = <span class="fn">split_pipe</span>(row[<span class="s">"Position"</span>]); vols  = <span class="fn">split_pipe</span>(row[<span class="s">"Volume(ml)"</span>])
+<span class="k">if</span> len({len(boxes), len(types), len(poss), len(vols)}) != <span class="s">1</span>:
+    sys.exit(<span class="s">"… per-tube columns have unequal lengths"</span>)   <span class="c"># ragged guard</span>
+<span class="k">for</span> k in range(len(boxes)):
+    btype = BOX_TYPE_OVERRIDES.get(boxes[k], types[k])   <span class="c"># "Box 23/23" → 9x9</span>
+    tubes.append({<span class="s">"box"</span>: boxes[k], <span class="s">"btype"</span>: btype,
+                  <span class="s">"pos"</span>: <span class="fn">normalize_pos</span>(poss[k]),        <span class="c"># lowercase, J→i</span>
+                  <span class="s">"vol"</span>: vols[k], <span class="s">"merge"</span>: row[<span class="s">"Merge Date"</span>]})</pre>
+    <p><code class="i">"B1 | B1 | B2"</code> + <code class="i">"A1 | A2 | C8"</code> → three tube dicts. <code class="i">normalize_pos</code> rewrites <code class="i">J→i</code> because GenScript labels a 9×9's 9th row "J" (skipping "I").</p>
+  </div>
+
+  <div class="deep">
+    <h3>c · The validation gate — <code>validate_tubes</code></h3>
+    <p>Runs after <code class="i">build_tubes</code>, before any network call. It rejects structurally impossible data so nothing half-writes:</p>
+    <ul>
+      <li>every box type resolves to a schema (<code class="i">9x9</code> / <code class="i">2x5</code>)</li>
+      <li>a box name maps to only one type</li>
+      <li>every position is inside its box's grid (row letters skip <code class="i">I</code>)</li>
+      <li>no two tubes claim the same <code class="i">(box, type, merge, position)</code></li>
+    </ul>
+    <p>Any failure → <code class="i">sys.exit("[LOCAL_PARSE] ERROR …")</code> listing every problem at once.</p>
+  </div>
+
+  <div class="deep">
+    <h3>d · Building payloads &amp; threading ids</h3>
+    <p>Each <code class="i">build_*_payloads</code> returns SDK model objects. The catch: later phases need <em>ids that don't exist until earlier phases are pushed</em>. The orchestrator threads them back in (the full mint-and-hand-forward chain is in <a href="#phases">§4</a>); the parser-side slicing:</p>
+    <div class="cycle">
+      <span class="b build">sequences</span><span class="ar">→ ids →</span>
+      <span class="b push">lots</span><span class="ar">;</span>
+      <span class="b build" style="border-color:var(--persist);color:var(--persist)">boxes</span><span class="ar">→ ids →</span>
+      <span class="b push">containers</span><span class="ar">;</span>
+      <span class="b" style="border-color:var(--io);color:var(--io)">lots + containers</span><span class="ar">→</span>
+      <span class="b persist">transfers</span>
+    </div>
+    <ul>
+      <li><strong>Sequences → Lots:</strong> the flat <code class="i">sequence_ids</code> list is sliced back per row by <code class="i">seq_offsets</code> / <code class="i">row_seq_ids</code> (padded to 4 with <code class="i">None</code>), so each lot links exactly its own sequences.</li>
+      <li><strong>Boxes → Containers:</strong> <code class="i">build_box_payloads</code> dedups boxes by <code class="i">box_key = (box, type, merge)</code>; the returned <code class="i">box_id_by_key</code> lets each container resolve its <code class="i">parent_storage_id = f"{box_id}:{pos}"</code>.</li>
+      <li><strong>Lots + Containers → Transfers:</strong> <code class="i">build_transfer_requests</code> pairs <code class="i">lot_ids[i]</code> (source) with <code class="i">container_ids[j]</code> (destination), carrying the per-tube volume and the lot's concentration.</li>
+    </ul>
+  </div>
+
+  <div class="deep">
+    <h3>e · Field mapping — <code>lot_fields_for</code> + <code>make_fields</code></h3>
+    <p>How one Lot's fields are assembled. The CSV headers don't match the Benchling field names, so a single <code class="i">LOT_FIELDS</code> table is the source of truth for that translation:</p>
+    <pre><span class="c"># one table — (CSV column, Benchling field, transform, required?), 29 rows</span>
+LOT_FIELDS = [
+    (<span class="s">"Concentration(mg/ml)"</span>, <span class="s">"Concentration (mg/mL)"</span>, <span class="fn">to_float</span>,      <span class="k">True</span>),   <span class="c"># QC → required</span>
+    (<span class="s">"Buffer"</span>,               <span class="s">"Buffer"</span>,                <span class="fn">empty_to_none</span>, <span class="k">True</span>),
+    (<span class="s">"target1"</span>,              <span class="s">"Target1"</span>,               <span class="fn">empty_to_none</span>, <span class="k">False</span>),  <span class="c"># metadata → optional</span>
+    (<span class="s">"no_of_seqs"</span>,           <span class="s">"Number of sequences"</span>,   <span class="fn">to_float</span>,      <span class="k">False</span>),
+    <span class="c"># … 25 more …</span>
+]
+
+<span class="k">def</span> <span class="fn">lot_fields_for</span>(row, seq_ids, tubes):
+    out = {bench: tx(row[csv]) <span class="k">for</span> csv, bench, tx, _ in LOT_FIELDS <span class="k">if</span> csv in row.index}
+    out.update(LOT_CONSTANT_FIELDS)                  <span class="c"># Supplier = "Genscript"</span>
+    out[<span class="s">"Number of units"</span>] = float(len(tubes))       <span class="c"># derived</span>
+    out[<span class="s">"Volume (mL)"</span>]     = round(sum(tube vols), <span class="s">4</span>) <span class="c"># derived</span>
+    <span class="k">for</span> i, sid in enumerate(seq_ids, <span class="s">1</span>): out[f<span class="s">"Sequence{i}"</span>] = sid
+    <span class="k">return</span> out</pre>
+    <ul>
+      <li><code class="i">LOT_FIELDS</code> — every scalar Lot field in one place: CSV column, Benchling field name, a text/number transform, and whether it's <strong>required</strong> (identity + QC) or optional (metadata). <code class="i">REQUIRED_CSV_COLUMNS</code> is derived from that flag and checked in <code class="i">read_csv</code>. Adding a field is one line here (plus creating it on the schema).</li>
+      <li><code class="i">if csv in row.index</code> skips columns absent from an order, so an optional one (e.g. <code class="i">target2</code> on a monospecific order) is simply not sent — no error.</li>
+      <li><code class="i">make_fields</code> then drops any <code class="i">None</code>, so empty cells aren't sent either.</li>
+    </ul>
+    <div class="callout"><b>Note:</b> a field only lands if the Benchling schema defines it — Benchling rejects writes to unknown fields, so <code class="i">LOT_FIELDS</code> and the schema must stay in sync.</div>
+  </div>
+
+  <!-- ============ DEEP DIVE: PUSHER ============ -->
+  <h2 id="pusher"><span class="n">6</span>Inside the pusher — <code>genscript_upload.py</code></h2>
+  <p class="lede">The only module that writes to Benchling. Nearly every write goes through one engine.</p>
+
+  <div class="deep">
+    <h3>a · The bulk engine — <code>run_bulk</code></h3>
+    <p>Given a list of payloads, a <code class="i">submit</code> callable, and an optional <code class="i">extract</code> callable, it chunks, fires the async task, waits, checks, and collects ids:</p>
+    <div class="cycle">
+      <span class="b build">chunk ≤100</span><span class="ar">→</span>
+      <span class="b push">submit()</span><span class="ar">→</span>
+      <span class="b" style="border-color:var(--io);color:var(--io)">wait_for_task</span><span class="ar">→</span>
+      <span class="b persist">check SUCCEEDED</span><span class="ar">→</span>
+      <span class="b build">extract rows</span>
+    </div>
+    <pre><span class="k">for</span> chunk in <span class="fn">chunked</span>(items, chunk_size):               <span class="c"># ≤100 per request</span>
+    task = <span class="fn">wait_for_task</span>(benchling, submit(chunk).task_id)  <span class="c"># async → poll</span>
+    <span class="k">if</span> task.status != AsyncTaskStatus.SUCCEEDED:
+        <span class="k">raise</span> RuntimeError(f<span class="s">"{label} chunk failed …"</span>)
+    <span class="k">if</span> extract <span class="k">is not</span> <span class="k">None</span>:
+        rows = extract(task.response <span class="k">or</span> {})
+        <span class="k">if</span> len(rows) != len(chunk):                    <span class="c"># length sanity check</span>
+            <span class="k">raise</span> RuntimeError(f<span class="s">"{label} returned {len(rows)} for {len(chunk)}"</span>)
+        results.extend(rows)</pre>
+    <p><code class="i">submit</code>/<code class="i">extract</code> are passed in per phase (e.g. <code class="i">aa_sequences.bulk_create</code> + an extractor for the <code class="i">aaSequences</code> rows). Transfers pass no <code class="i">extract</code> and return nothing.</p>
+  </div>
+
+  <div class="deep">
+    <h3>b · Boxes, one at a time — <code>create_boxes</code></h3>
+    <p>Benchling's <code class="i">boxes.create</code> isn't a bulk endpoint, so boxes are the exception to <code class="i">run_bulk</code> — created individually in a loop, returning <code class="i">{box_key: box_id}</code> for the container phase to consume.</p>
+    <pre><span class="k">for</span> key, payload in box_payloads:            <span class="c"># [(box_key, BoxCreate)]</span>
+    box = benchling.boxes.create(payload)
+    out[key] = box.id
+<span class="k">return</span> out                                   <span class="c"># {(box,type,merge): box_id}</span></pre>
+  </div>
+
+  <div class="deep">
+    <h3>c · Resolving a dropdown — <code>resolve_dropdown</code></h3>
+    <p>Dropdown values need the option's <em>id</em>, not its name. Resolves <code class="i">"Container Type" → "Eppendorf"</code> to an id once at startup.</p>
+  </div>
+
+  <div class="deep">
+    <h3>d · Reading results — <code>entity_field</code></h3>
+    <p>Bulk responses come back as dicts <em>or</em> objects; <code class="i">entity_field(e, "id")</code> reads the field either way.</p>
+  </div>
+
+  <!-- ============ DEEP DIVE: SHARED IO ============ -->
+  <h2 id="io"><span class="n">7</span>Inside shared helpers — <code>benchling_io.py</code></h2>
+  <p class="lede">Network plumbing (<code>connect</code>, <code>wait_for_task</code> — pusher only) plus two pure helpers (<code>chunked</code>, <code>log</code>). <code>log</code> is the parser's only reason to touch this file.</p>
+
+  <div class="deep">
+    <h3>a · <code>connect</code> — the client, with a long timeout</h3>
+    <p>Builds the client from <code class="i">.env</code>, with a <strong>120&nbsp;s</strong> read timeout (the 5&nbsp;s default is too short for task polls); the SDK's 429/5xx retry still applies.</p>
+    <pre>client = httpx.Client(timeout=httpx.Timeout(<span class="s">120.0</span>, connect=<span class="s">10.0</span>))
+<span class="k">return</span> Benchling(url=url, auth_method=ApiKeyAuth(key), httpx_client=client)</pre>
+  </div>
+
+  <div class="deep">
+    <h3>b · <code>wait_for_task</code> — poll until done, retry blips</h3>
+    <p>Bulk ops are async: <code class="i">submit</code> returns a <code class="i">task_id</code>, this polls it — retrying transient timeouts (<code class="i">NET_ERRS</code>), up to 30&nbsp;min, then raising <code class="i">TimeoutError</code>.</p>
+    <pre><span class="k">while</span> time.time() - start &lt; max_wait_seconds:       <span class="c"># up to 1800s</span>
+    <span class="k">try</span>:
+        task = benchling.tasks.get_by_id(task_id)
+        <span class="k">if</span> task.status != AsyncTaskStatus.RUNNING:
+            <span class="k">return</span> task
+    <span class="k">except</span> NET_ERRS <span class="k">as</span> e:                          <span class="c"># transient timeouts → retry</span>
+        print(f<span class="s">"(task poll retry: {type(e).__name__})"</span>)
+    time.sleep(poll_interval)                        <span class="c"># every 2s</span></pre>
+  </div>
+
+  <div class="deep">
+    <h3>c · <code>chunked</code> &amp; <code>log</code></h3>
+    <p><code class="i">chunked(seq, n)</code> yields n-sized slices (the ≤100 batching); <code class="i">log(label, msg)</code> prints a timestamped <code class="i">HH:MM:SS [LABEL]</code> line.</p>
+  </div>
+
+  <h2 id="where"><span class="n">8</span>Where things live</h2>
+  <p>A map from "the thing you're looking for" to the function and file that owns it.</p>
+  <table>
+    <tr><th>To…</th><th>Function · file</th></tr>
+    <tr><td>Read the CSV into a DataFrame</td><td><code>read_csv</code> · genscript_parse</td></tr>
+    <tr><td>Explode <code>|</code>-columns into per-tube dicts</td><td><code>build_tubes</code> · genscript_parse</td></tr>
+    <tr><td>Validate before any write</td><td><code>validate_tubes</code> · genscript_parse</td></tr>
+    <tr><td>Assemble a Lot's fields (one table)</td><td><code>lot_fields_for</code> · genscript_parse</td></tr>
+    <tr><td>Build a phase's payloads</td><td><code>build_*_payloads</code> · genscript_parse</td></tr>
+    <tr><td>Chunk → submit → wait → check a bulk op</td><td><code>run_bulk</code> · genscript_upload</td></tr>
+    <tr><td>Create boxes (one by one)</td><td><code>create_boxes</code> · genscript_upload</td></tr>
+    <tr><td>Resolve a dropdown option id</td><td><code>resolve_dropdown</code> · genscript_upload</td></tr>
+    <tr><td>Connect / poll a task / chunk / log</td><td><code>connect · wait_for_task · chunked · log</code> · benchling_io</td></tr>
+    <tr><td>Sequence the five phases</td><td><code>upload</code> · genscript_order_uploader</td></tr>
+  </table>
+
+  <h2 id="safety"><span class="n">9</span>Recovery</h2>
+  <p>No result file — the tenant is the record, and progress is logged to the console (<code class="i">stage</code> tags the failing phase). If a run dies partway, undo it by order id:</p>
+  <pre><span class="k">python</span> dev-tools/cleanup_run.py <span class="f">--order-id</span> <span class="s">U0000AAAA0</span> <span class="f">--env</span> <span class="s">test</span></pre>
+  <p>Cleanup finds everything by the order-id prefix in the names; sequences also via their lots' links <em>and</em> an <code class="i">Order ID</code>-field scan — the scan is what catches sequences orphaned when phase 2 fails (no lot links them).</p>
+
+  <h2 id="cleanup"><span class="n">10</span>Second entrypoint — cleanup</h2>
+  <p><code class="i">dev-tools/cleanup_run.py</code> reverses a push by <code class="i">--order-id</code>: archives containers + boxes, renames + archives lots + sequences. It reuses the uploader's <code class="i">SCHEMAS</code> and <code class="i">benchling_io</code>, so the two never drift. Usage: <a href="commands.md">commands.md</a>.</p>
+
+  <footer>GenScript → Benchling order uploader · code walkthrough · see <code>README.md</code> for setup &amp; usage.</footer>
+</div>
+
+<script>
+  (function(){
+    var b=document.getElementById('theme');
+    b.addEventListener('click',function(){
+      var cur=document.documentElement.getAttribute('data-theme')||
+        (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+      document.documentElement.setAttribute('data-theme',cur==='dark'?'light':'dark');
+    });
+  })();
+</script>
+</body>
+</html>
