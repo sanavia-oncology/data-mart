@@ -56,7 +56,7 @@ def main() -> int:
             state = "complete"
         else:
             state = "partial" if has_any_lot(benchling, prefix) else "none"
-        out[prefix] = {"state": state, "uploaded": state == "complete"}
+        out[prefix] = {"state": state}
     if not args.no_cache:
         write_states(args.env, {p: entry(v["state"]) for p, v in out.items()})
     json.dump(out, sys.stdout)

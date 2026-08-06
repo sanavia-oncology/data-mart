@@ -23,7 +23,7 @@ def _now() -> str:
 
 
 def entry(state: str) -> dict:
-    return {"state": state, "uploaded": state == "complete", "checked_at": _now()}
+    return {"state": state, "checked_at": _now()}
 
 
 def read_states(env: str) -> dict[str, dict]:

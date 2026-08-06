@@ -22,6 +22,14 @@ app_env_get <- function(key, default = "") {
     if (key %in% names(conf) && nzchar(conf[[key]])) unname(conf[[key]]) else default
 }
 
+# Atomic + 0600: readers never see half a file, and secrets stay owner-only.
+write_env_file <- function(path, vals) {
+    tmp <- paste0(path, ".tmp")
+    writeLines(sprintf('%s="%s"', names(vals), unlist(vals)), tmp)
+    Sys.chmod(tmp, "0600")
+    if (!file.rename(tmp, path)) { unlink(tmp); stop("could not replace ", path) }
+}
+
 # Merge rather than overwrite: the form is the only writer today, but a stray key shouldn't vanish.
 app_env_write <- function(updates) {
     path <- path.expand(Sys.getenv("DATA_MART_ENV_FILE", APP_ENV_FILE))
@@ -31,10 +39,7 @@ app_env_write <- function(updates) {
         merged[[k]] <- trimws(as.character(if (is.null(v)) "" else v))
     }
     merged <- merged[nzchar(unlist(merged))]
-    tmp <- paste0(path, ".tmp")
-    writeLines(sprintf('%s="%s"', names(merged), unlist(merged)), tmp)
-    Sys.chmod(tmp, "0600")
-    if (!file.rename(tmp, path)) { unlink(tmp); stop("could not replace ", path) }
+    write_env_file(path, merged)
 }
 
 build_cfg <- function(app_dir) {
@@ -44,10 +49,6 @@ build_cfg <- function(app_dir) {
         v <- Sys.getenv(key, ""); if (nzchar(v)) v else default
     }
     app_dir <- normalizePath(app_dir, mustWork = FALSE)    # server.R passes a trailing slash
-    if (!dir.exists(file.path(app_dir, "scripts"))) {      # runApp always chdirs here; fallback only
-        alt <- getv("ORDER_UPLOAD_APP")
-        if (nzchar(alt)) app_dir <- normalizePath(alt, mustWork = FALSE)
-    }
     py <- getv("GENSCRIPT_PY")
     if (!nzchar(py)) py <- file.path(app_dir, "benchling-python-env", "bin", "python")
     list(

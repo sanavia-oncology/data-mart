@@ -103,7 +103,7 @@ server <- function(input, output, session) {
 
     # complete or partial both mean "entities exist in Benchling" -> clean-up-eligible, not upload.
     # No entry = not uploaded, until a Refresh checks Benchling and corrects it.
-    order_state <- function(v) if (is.null(v)) "none" else v$state %||% (if (isTRUE(v$uploaded)) "complete" else "none")
+    order_state <- function(v) if (is.null(v)) "none" else v$state %||% "none"
 
     # Patch only the orders whose state actually moved. Leaving status_rv untouched when a check
     # agrees with what's shown is what keeps the table from redrawing under the user.
@@ -523,25 +523,25 @@ server <- function(input, output, session) {
     }, ignoreInit = TRUE)
 
     # A browser folder picker can't return an absolute path, and R here runs on the user's own Mac.
-    pick_proc <- NULL
+    pick_rv <- reactiveVal(NULL)   # reactive, so launching the process wakes the poll below
     observeEvent(input$cr_orders_pick, {
-        if (!is.null(pick_proc)) return()
+        if (!is.null(pick_rv())) return()
         cur <- trimws(input$cr_orders %||% "")
         loc <- if (nzchar(cur) && dir.exists(cur)) sprintf(' default location (POSIX file "%s")', cur) else ""
         # Bare `activate` targets osascript itself; System Events would trigger an automation prompt.
         args <- c("-e", "activate",
                   "-e", sprintf('POSIX path of (choose folder with prompt "Select the orders folder"%s)', loc))
-        pick_proc <<- tryCatch(processx::process$new("osascript", args, stdout = "|", stderr = "|"),
-                               error = function(e) NULL)
-        if (is.null(pick_proc))
+        pick_rv(tryCatch(processx::process$new("osascript", args, stdout = "|", stderr = "|"),
+                         error = function(e) NULL))
+        if (is.null(pick_rv()))
             showNotification("Could not open the folder picker.", type = "error", duration = 10)
     }, ignoreInit = TRUE)
 
     observe({
-        p <- pick_proc
+        p <- pick_rv()
         if (is.null(p)) return()
         if (p$is_alive()) { invalidateLater(300); return() }
-        pick_proc <<- NULL
+        pick_rv(NULL)
         out <- tryCatch(trimws(paste(p$read_all_output_lines(), collapse = "")), error = function(e) "")
         if (!nzchar(out)) return()                       # cancel exits non-zero with no stdout
         if (nchar(out) > 1L) out <- sub("/$", "", out)   # `choose folder` returns a trailing slash
@@ -589,6 +589,8 @@ server <- function(input, output, session) {
     })
 
     session$onSessionEnded(function() {
+        pp <- isolate(pick_rv())
+        if (!is.null(pp) && pp$is_alive()) tryCatch(pp$kill(), error = function(e) NULL)
         if (!is.null(current_proc) && current_proc$is_alive()) tryCatch(current_proc$kill_tree(), error = function(e) NULL)
         if (!is.null(status_proc) && status_proc$proc$is_alive()) tryCatch(status_proc$proc$kill(), error = function(e) NULL)
         if (!is.null(loc_proc) && loc_proc$proc$is_alive()) tryCatch(loc_proc$proc$kill(), error = function(e) NULL)

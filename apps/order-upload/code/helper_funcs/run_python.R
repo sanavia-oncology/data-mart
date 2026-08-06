@@ -26,25 +26,17 @@ py_status <- function(ids, cfg) {
     tryCatch(jsonlite::fromJSON(res$stdout, simplifyVector = FALSE), error = function(e) list())
 }
 
-# Asynchronous: start the status check in the background, JSON written to a temp file. Returns
-# list(proc, outfile); the caller polls proc$is_alive() and parses outfile once it exits. Keeps the
-# whole-table refresh off the UI thread so the app never freezes on a slow Benchling round-trip.
-py_status_async <- function(ids, cfg) {
+# Background spawn, JSON to a temp file — keeps Benchling round-trips off the UI thread.
+# Caller polls proc$is_alive() and parses outfile once it exits.
+.py_async <- function(args, cfg) {
     outfile <- tempfile(fileext = ".json")
-    proc <- processx::process$new(cfg$py, .status_args(ids, cfg), wd = cfg$app_dir,
-                                  env = .penv(cfg), stdout = outfile, stderr = "|")
-    list(proc = proc, outfile = outfile)
+    list(proc = processx::process$new(cfg$py, args, wd = cfg$app_dir, env = .penv(cfg),
+                                      stdout = outfile, stderr = "|"),
+         outfile = outfile)
 }
 
-# Storage locations for the dropdown -> data.frame(id, name); 0 rows on failure. Backgrounded like
-# the status check: SDK import + round trip is seconds, and it would sit in front of the first paint.
-py_locations_async <- function(cfg) {
-    outfile <- tempfile(fileext = ".json")
-    args <- c(.script(cfg, "genscript_locations.py"), "--env", cfg$env)
-    proc <- processx::process$new(cfg$py, args, wd = cfg$app_dir, env = .penv(cfg),
-                                  stdout = outfile, stderr = "|")
-    list(proc = proc, outfile = outfile)
-}
+py_status_async    <- function(ids, cfg) .py_async(.status_args(ids, cfg), cfg)
+py_locations_async <- function(cfg) .py_async(c(.script(cfg, "genscript_locations.py"), "--env", cfg$env), cfg)
 
 py_locations_collect <- function(lp) {
     empty <- data.frame(id = character(), name = character(), stringsAsFactors = FALSE)
