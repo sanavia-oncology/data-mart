@@ -22,6 +22,7 @@ server <- function(input, output, session) {
     log_rv       <- reactiveVal(character(0))   # current run's output — kept for the error log, not shown live
     result_rv    <- reactiveVal(NULL)           # last finished run: list(kind, ok, order, logfile)
     status_busy  <- reactiveVal(FALSE)          # TRUE while the async Benchling sync runs
+    sync_ok      <- reactiveVal(TRUE)   # FALSE after a failed sync: the cache can't prove upload state
     run_rv       <- reactiveValues(running = FALSE, order = NULL, kind = NULL, started = NULL, location = NULL)
     current_proc <- NULL   # plain var: must survive the poll's invalidations
     status_proc  <- NULL   # plain var: the async status-sync process, as list(proc, outfile)
@@ -75,9 +76,11 @@ server <- function(input, output, session) {
         }
         if (!length(ids)) { status_busy(FALSE); return() }
         status_proc <<- tryCatch(py_status_async(ids, ecfg()), error = function(e) NULL)
-        if (is.null(status_proc))
+        if (is.null(status_proc)) {
             showNotification("Could not start the Benchling check — is the python env built?",
                              type = "error", duration = 12)
+            sync_ok(FALSE)
+        }
         status_busy(!is.null(status_proc))
     }
 
@@ -137,7 +140,11 @@ server <- function(input, output, session) {
         df <- load_orders()
         launch_status(if (nrow(df)) df$order_id else character(0))
     })
-    if (!embed) isolate(load_orders())   # reads selected_rv(), so needs a reactive context
+    # Or a fresh machine reads "No" for every order until someone hits Refresh.
+    if (!embed) isolate({
+        df0 <- load_orders()
+        launch_status(if (nrow(df0)) df0$order_id else character(0))
+    })
 
     # The sync's answer wins where it differs; a failed/empty run leaves the mirror's values alone.
     observe({
@@ -155,9 +162,11 @@ server <- function(input, output, session) {
         status_proc <<- NULL
         if (identical(code, 0L) && length(st)) {
             apply_states(st)
+            sync_ok(TRUE)
         } else {
             showNotification(sync_error_msg(code, err), type = "error", duration = 15)
             if (length(err)) write_error_log("status", NULL, err)
+            sync_ok(FALSE)
         }
         status_busy(FALSE)
     })
@@ -167,6 +176,8 @@ server <- function(input, output, session) {
     # order routes to Clean up so we never re-upload on top of it and duplicate lots.
     selected_split <- reactive({
         st <- status_rv(); up <- character(0); not <- character(0)
+        # Both actions key off a status we no longer trust, so offer neither.
+        if (!sync_ok()) return(list(up = up, not = not))
         for (id in selected_rv()) {
             if (order_state(st[[id]]) %in% c("complete", "partial")) up <- c(up, id) else not <- c(not, id)
         }
@@ -180,6 +191,13 @@ server <- function(input, output, session) {
                           class = "text-secondary", style = "font-size: 13px;"))
         n_up   <- sum(vapply(df$order_id, function(i) identical(order_state(st[[i]]), "complete"), logical(1)))
         n_fail <- sum(vapply(df$order_id, function(i) identical(order_state(st[[i]]), "partial"),  logical(1)))
+        if (!sync_ok())
+            return(tagList(
+                tags$p(sprintf("%d order%s found", nrow(df), if (nrow(df) == 1L) "" else "s"),
+                       style = "margin: 0; font-size: 13px;"),
+                # Outlives the error toast, so the blank column is never left unexplained.
+                tags$p("Benchling unreachable — upload status unavailable.", class = "text-danger",
+                       style = "margin: 0; font-size: 13px;")))
         tagList(
             tags$p(sprintf("%d order%s found", nrow(df), if (nrow(df) == 1L) "" else "s"), style = "margin: 0; font-size: 13px;"),
             tags$p(sprintf("%d already in Benchling", n_up), class = "text-secondary", style = "margin: 0; font-size: 13px;"),
@@ -197,7 +215,7 @@ server <- function(input, output, session) {
         if (is.null(df) || !nrow(df))
             return(data.frame(`Order ID` = character(), `Order Date` = character(), Uploaded = character(), check.names = FALSE))
         st <- status_rv()
-        uploaded <- vapply(df$order_id, function(id)
+        uploaded <- if (!sync_ok()) rep("—", nrow(df)) else vapply(df$order_id, function(id)
             switch(order_state(st[[id]]), complete = "Yes", partial = "Failed", "No"), character(1))
         data.frame(`Order ID` = df$order_id,
                    `Order Date` = ifelse(is.na(df$order_date), "", format(df$order_date, "%Y-%m-%d")),
@@ -206,6 +224,7 @@ server <- function(input, output, session) {
 
     orders_filtered = reactive({
         data = orders_view()
+        if (!sync_ok()) return(data)     # every row reads "—"; a Yes/No filter would empty the table
         if (isTruthy(input$uploaded) && input$uploaded != "All") {
             data = data[data[["Uploaded"]] == input$uploaded, ]
         }
@@ -447,7 +466,8 @@ server <- function(input, output, session) {
         if (isTRUE(run_rv$running)) { reset_env_radio(); return() }
         env_rv(input$env_choice)
         status_rv(list())            # the mirror is per-tenant; drop what the old one said
-        load_orders()
+        df <- load_orders()
+        launch_status(if (nrow(df)) df$order_id else character(0))   # same reason as startup
         showNotification(sprintf("Now using the %s tenant.", toupper(env_rv())), type = "message")
     }, ignoreInit = TRUE)
 

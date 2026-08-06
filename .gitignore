@@ -36,6 +36,7 @@ apps/order-upload/docs/genscript_uploader.pdf
 
 # Editor and tooling
 .claude/
+.playwright-mcp/
 .vscode/
 .idea/
 *.swp

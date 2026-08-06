@@ -22,7 +22,7 @@ app_env_get <- function(key, default = "") {
     if (key %in% names(conf) && nzchar(conf[[key]])) unname(conf[[key]]) else default
 }
 
-# Merge keys into the env file, preserving the ones the form doesn't own (ORDER_UPLOAD_APP).
+# Merge rather than overwrite: the form is the only writer today, but a stray key shouldn't vanish.
 app_env_write <- function(updates) {
     path <- path.expand(Sys.getenv("DATA_MART_ENV_FILE", APP_ENV_FILE))
     merged <- as.list(read_env_file(path))
