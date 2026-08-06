@@ -48,18 +48,14 @@ def main() -> int:
     load_dotenv()
     args = parse_args()
     benchling = connect(args.env)
-    markers = list_markers(benchling, args.env)      # one call for the batch; None = not configured
+    markers = list_markers(benchling, args.env)      # one call for the whole batch
     out = {}
     for oid in args.order_ids:
         prefix = oid.strip().split("-", 1)[0]
-        if markers is not None and prefix in markers:  # marker present -> done, no lot probe
+        if prefix in markers:                        # marker present -> done, no lot probe
             state = "complete"
         else:
-            has_lot = has_any_lot(benchling, prefix)
-            if markers is None:                      # markers not configured -> can't detect partial
-                state = "complete" if has_lot else "none"
-            else:
-                state = "partial" if has_lot else "none"
+            state = "partial" if has_any_lot(benchling, prefix) else "none"
         out[prefix] = {"state": state, "uploaded": state == "complete"}
     if not args.no_cache:
         write_states(args.env, {p: entry(v["state"]) for p, v in out.items()})

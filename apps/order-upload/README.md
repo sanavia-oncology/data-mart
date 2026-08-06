@@ -12,7 +12,7 @@ cd data-mart/apps/order-upload
 # 2. R packages
 R -e 'install.packages(c("shiny","bslib","DT","jsonlite","processx"), repos="https://cloud.r-project.org")'
 
-# 3. Benchling credentials
+# 3. Set App Credentials
 cp .env.example ~/.env_benchling
 open -e ~/.env_benchling         # set BENCHLING_TEST_TENANT_URL + BENCHLING_TEST_API_KEY
 ln -sf ~/.env_benchling .env

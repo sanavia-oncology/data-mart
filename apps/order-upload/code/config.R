@@ -1,4 +1,6 @@
-# Read ~/.env_data_ingestion_apps (KEY=VALUE) and resolve app paths.
+# Read ~/.env_data_mart_order_upload (KEY=VALUE) and resolve app paths.
+
+APP_ENV_FILE <- "~/.env_data_mart_order_upload"
 
 read_env_file <- function(path) {
     path <- path.expand(path)
@@ -15,8 +17,28 @@ read_env_file <- function(path) {
     stats::setNames(vals, keys[ok])
 }
 
+app_env_get <- function(key, default = "") {
+    conf <- read_env_file(Sys.getenv("DATA_MART_ENV_FILE", APP_ENV_FILE))
+    if (key %in% names(conf) && nzchar(conf[[key]])) unname(conf[[key]]) else default
+}
+
+# Merge keys into the env file, preserving the ones the form doesn't own (ORDER_UPLOAD_APP).
+app_env_write <- function(updates) {
+    path <- path.expand(Sys.getenv("DATA_MART_ENV_FILE", APP_ENV_FILE))
+    merged <- as.list(read_env_file(path))
+    for (k in names(updates)) {
+        v <- updates[[k]]
+        merged[[k]] <- trimws(as.character(if (is.null(v)) "" else v))
+    }
+    merged <- merged[nzchar(unlist(merged))]
+    tmp <- paste0(path, ".tmp")
+    writeLines(sprintf('%s="%s"', names(merged), unlist(merged)), tmp)
+    Sys.chmod(tmp, "0600")
+    if (!file.rename(tmp, path)) { unlink(tmp); stop("could not replace ", path) }
+}
+
 build_cfg <- function(app_dir) {
-    conf <- read_env_file(Sys.getenv("DATA_INGESTION_ENV_FILE", "~/.env_data_ingestion_apps"))
+    conf <- read_env_file(Sys.getenv("DATA_MART_ENV_FILE", APP_ENV_FILE))
     getv <- function(key, default = "") {
         if (key %in% names(conf) && nzchar(conf[[key]])) return(unname(conf[[key]]))
         v <- Sys.getenv(key, ""); if (nzchar(v)) v else default

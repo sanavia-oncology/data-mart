@@ -30,10 +30,11 @@ def main() -> int:
     ap.add_argument("--env", choices=["test", "prod"], default="test")
     args = ap.parse_args()
 
-    if marker_parent_id(args.env) is None:
-        sys.exit(f"ERROR: GENSCRIPT_{args.env.upper()}_MARKER_FOLDER_ID not set")
-
     b = connect(args.env)
+    try:
+        marker_parent_id(b, args.env)
+    except RuntimeError as e:
+        sys.exit(f"ERROR: {e}")
     for spec in args.orders:
         prefix, _, csv = spec.partition("=")
         prefix = prefix.strip().split("-", 1)[0]

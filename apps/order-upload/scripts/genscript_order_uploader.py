@@ -143,8 +143,7 @@ def main() -> int:
         try:
             mid = write_marker(benchling, prefix, args.env)
             set_state(args.env, prefix, "complete")
-            log("BENCHLING_PUSH", f"upload complete — wrote marker {mid}" if mid
-                else "upload complete — markers not configured, none written")
+            log("BENCHLING_PUSH", f"upload complete — wrote marker {mid}")
         except Exception as e:
             log("BENCHLING_PUSH", f"WARNING: upload succeeded but marker write failed: {e}")
     return rc

@@ -4,11 +4,16 @@ options(shiny.sanitize.errors = FALSE, shiny.fullstacktrace = TRUE)
 
 server <- function(input, output, session) {
     cfg <- build_cfg(paste0(getwd(), "/"))
+    # The iframed creds form has no table and no Benchling work — skip everything that serves them.
+    embed <- identical(parseQueryString(isolate(session$clientData$url_search))$embed, "creds")
 
     # Tenant the app is pointed at. Session-scoped and always starts at test — a reload
     # never leaves you silently in prod. ecfg() is what every python call must use.
     env_rv <- reactiveVal("test")
-    ecfg   <- function() modifyList(cfg, list(env = isolate(env_rv())))
+    # cfg is captured once, so the creds form updates this instead of needing a restart.
+    orders_dir_rv <- reactiveVal(cfg$orders_dir)
+    ecfg   <- function() modifyList(cfg, list(env = isolate(env_rv()),
+                                              orders_dir = isolate(orders_dir_rv())))
 
     orders_rv    <- reactiveVal(NULL)
     status_rv    <- reactiveVal(list())
@@ -37,7 +42,7 @@ server <- function(input, output, session) {
 
     # Backgrounded: fetching these inline held up the session function, and so the first paint.
     locations_rv <- reactiveVal(NULL)
-    loc_proc <- tryCatch(py_locations_async(ecfg()), error = function(e) NULL)
+    if (!embed) loc_proc <- tryCatch(py_locations_async(ecfg()), error = function(e) NULL)
     observe({
         lp <- loc_proc
         if (is.null(lp)) return()
@@ -70,7 +75,27 @@ server <- function(input, output, session) {
         }
         if (!length(ids)) { status_busy(FALSE); return() }
         status_proc <<- tryCatch(py_status_async(ids, ecfg()), error = function(e) NULL)
-        status_busy(!is.null(status_proc))   # a launch failure just leaves the mirror's values up
+        if (is.null(status_proc))
+            showNotification("Could not start the Benchling check — is the python env built?",
+                             type = "error", duration = 12)
+        status_busy(!is.null(status_proc))
+    }
+
+    # A rejected key used to look identical to "nothing changed", so say which failure it was.
+    sync_error_msg <- function(code, err) {
+        txt <- paste(err, collapse = " ")
+        if (grepl("401|Failed to authenticate|authentication_error", txt))
+            "Benchling rejected the credentials (401). Open Set App Credentials and paste a current API key."
+        else if (grepl("ERROR: set BENCHLING_", txt, fixed = TRUE))
+            "Credentials are missing. Fill them in under Set App Credentials."
+        else if (grepl("marker folder", txt, ignore.case = TRUE))
+            sub(".*RuntimeError: ", "", txt)          # already actionable — pass it through
+        else if (grepl("403|forbidden|permission", txt, ignore.case = TRUE))
+            "Benchling refused the request (403) — that key has no access to this tenant."
+        else if (grepl("Timeout|ConnectError|nodename nor servname|Name or service not known", txt))
+            "Could not reach Benchling — check the network and the tenant URL."
+        else
+            paste0("Benchling check failed (exit ", code, "). Details in logs/.")
     }
 
     # complete or partial both mean "entities exist in Benchling" -> clean-up-eligible, not upload.
@@ -90,7 +115,7 @@ server <- function(input, output, session) {
 
     # Disk only: the orders folder + the status file. No Benchling.
     load_orders <- function() {
-        df <- discover_orders(cfg$orders_dir)
+        df <- discover_orders(ecfg()$orders_dir)
         orders_rv(df)
         selected_rv(intersect(selected_rv(), df$order_id))
         apply_states(read_status_cache(ecfg()))
@@ -112,7 +137,7 @@ server <- function(input, output, session) {
         df <- load_orders()
         launch_status(if (nrow(df)) df$order_id else character(0))
     })
-    isolate(load_orders())   # reads selected_rv(), so needs a reactive context
+    if (!embed) isolate(load_orders())   # reads selected_rv(), so needs a reactive context
 
     # The sync's answer wins where it differs; a failed/empty run leaves the mirror's values alone.
     observe({
@@ -124,9 +149,16 @@ server <- function(input, output, session) {
             txt <- paste(readLines(sp$outfile, warn = FALSE), collapse = "")
             if (nzchar(txt)) jsonlite::fromJSON(txt, simplifyVector = FALSE) else list()
         }, error = function(e) list())
+        code <- tryCatch(sp$proc$get_exit_status(), error = function(e) NA_integer_)
+        err  <- tryCatch(sp$proc$read_all_error_lines(), error = function(e) character(0))
         tryCatch(unlink(sp$outfile), error = function(e) NULL)
         status_proc <<- NULL
-        if (length(st)) apply_states(st)
+        if (identical(code, 0L) && length(st)) {
+            apply_states(st)
+        } else {
+            showNotification(sync_error_msg(code, err), type = "error", duration = 15)
+            if (length(err)) write_error_log("status", NULL, err)
+        }
         status_busy(FALSE)
     })
 
@@ -144,7 +176,8 @@ server <- function(input, output, session) {
     output$sidebar_status <- renderUI({
         df <- orders_rv(); st <- status_rv()
         if (is.null(df) || !nrow(df))
-            return(tags$p("No orders found. Check GENSCRIPT_APP_DIR.", class = "text-secondary", style = "font-size: 13px;"))
+            return(tags$p("No orders found. Set the orders folder in Set App Credentials.",
+                          class = "text-secondary", style = "font-size: 13px;"))
         n_up   <- sum(vapply(df$order_id, function(i) identical(order_state(st[[i]]), "complete"), logical(1)))
         n_fail <- sum(vapply(df$order_id, function(i) identical(order_state(st[[i]]), "partial"),  logical(1)))
         tagList(
@@ -195,7 +228,7 @@ server <- function(input, output, session) {
     hide_spinner <- DT::JS("function(s){var el=document.getElementById('orders_spinner'); if(el) el.style.display='none';}")
     output$orders_table = DT::renderDataTable({
         if (is.null(orders_rv()) || !nrow(orders_rv()))
-            return(DT::datatable(data.frame(Message = "No orders found under GENSCRIPT_APP_DIR (check the sidebar)."),
+            return(DT::datatable(data.frame(Message = "No orders found — set the orders folder in Set App Credentials."),
                                  rownames = FALSE, options = list(dom = "t", paging = FALSE, initComplete = hide_spinner)))
         # OS-style selection via the Select extension: single click = one row, Cmd/Ctrl = toggle,
         # Shift = range. DT's own selection is off; we push the selected order ids to Shiny ourselves.
@@ -241,6 +274,7 @@ server <- function(input, output, session) {
 
     # Skipped while the "no orders" message table is up — its single column would break replaceData.
     observe({
+        if (embed) return()
         data <- orders_filtered()
         if (is.null(orders_rv()) || !nrow(orders_rv())) return()
         DT::replaceData(orders_proxy, data, resetPaging = FALSE, rownames = FALSE, clearSelection = "none")
@@ -374,20 +408,17 @@ server <- function(input, output, session) {
         ))
     }, ignoreInit = TRUE)
 
-    output$env_badge <- renderUI({
-        prod <- identical(env_rv(), "prod")
-        actionLink("env_switch", tags$span(
-            class = "env-tag", style = paste0("color: ", if (prod) "#00891a" else "#b07d00", ";"),
-            if (prod) "PRODUCTION" else "TEST"))
-    })
+    reset_env_radio <- function() updateRadioButtons(session, "env_choice", selected = env_rv())
 
-    observeEvent(input$env_switch, {
-        to <- if (identical(env_rv(), "prod")) "test" else "prod"
+    observeEvent(input$env_choice, {
+        to <- input$env_choice
+        if (identical(to, env_rv())) return()
         if (identical(to, "prod")) {
             cur <- creds_read()
             if (!all(c("BENCHLING_PROD_TENANT_URL", "BENCHLING_PROD_API_KEY") %in% names(cur))) {
-                showNotification("Production credentials are not set — add them under Benchling credentials.",
+                showNotification("Production credentials are not set — add them in Set App Credentials.",
                                  type = "error", duration = 8)
+                reset_env_radio()
                 return()
             }
         }
@@ -398,17 +429,23 @@ server <- function(input, output, session) {
             if (identical(to, "prod"))
                 tags$p("Production has no GenScript schemas yet, so uploads there will fail.",
                        class = "text-secondary", style = "font-size: 13px;"),
-            footer = tagList(modalButton("Cancel"),
+            footer = tagList(actionButton("env_cancel", "Cancel"),
                              actionButton("env_confirm", "Switch",
                                           class = if (identical(to, "prod")) "btn-danger" else "btn-primary")),
-            easyClose = TRUE
+            # No easyClose: a dismissed modal would leave the radio naming a tenant we never switched to.
+            easyClose = FALSE
         ))
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$env_cancel, {
+        removeModal()
+        reset_env_radio()
     }, ignoreInit = TRUE)
 
     observeEvent(input$env_confirm, {
         removeModal()
-        if (isTRUE(run_rv$running)) return()
-        env_rv(if (identical(env_rv(), "prod")) "test" else "prod")
+        if (isTRUE(run_rv$running)) { reset_env_radio(); return() }
+        env_rv(input$env_choice)
         status_rv(list())            # the mirror is per-tenant; drop what the old one said
         load_orders()
         showNotification(sprintf("Now using the %s tenant.", toupper(env_rv())), type = "message")
@@ -416,21 +453,11 @@ server <- function(input, output, session) {
 
     show_creds_modal <- function() {
         cur <- creds_read()
-        ph <- function(k) if (k %in% names(cur)) "already set — leave blank to keep" else ""
         showModal(modalDialog(
-            title = "Benchling credentials",
+            title = "Set App Credentials",
             tags$p(sprintf("Stored in %s, outside the repo, so recloning never destroys them.",
                            CREDS_FILE), class = "text-secondary", style = "font-size: 13px;"),
-            textInput("cr_test_url", "Test tenant URL",
-                      value = creds_get(cur, "BENCHLING_TEST_TENANT_URL"), width = "100%"),
-            passwordInput("cr_test_key", "Test API key", placeholder = ph("BENCHLING_TEST_API_KEY"),
-                          width = "100%"),
-            textInput("cr_marker", "Marker folder ID (optional)",
-                      value = creds_get(cur, "GENSCRIPT_TEST_MARKER_FOLDER_ID"), width = "100%"),
-            textInput("cr_prod_url", "Prod tenant URL (optional)",
-                      value = creds_get(cur, "BENCHLING_PROD_TENANT_URL"), width = "100%"),
-            passwordInput("cr_prod_key", "Prod API key (optional)",
-                          placeholder = ph("BENCHLING_PROD_API_KEY"), width = "100%"),
+            creds_fields(cur, isolate(orders_dir_rv())),
             footer = tagList(modalButton("Cancel"),
                              actionButton("creds_save", "Save", class = "btn-primary")),
             easyClose = TRUE
@@ -449,21 +476,57 @@ server <- function(input, output, session) {
     })
 
     observeEvent(input$creds_save, {
+        typed  <- trimws(input$cr_orders %||% "")
+        orders <- if (nzchar(typed)) path.expand(typed) else ""
         res <- tryCatch({
-            creds_write(list(BENCHLING_TEST_TENANT_URL       = input$cr_test_url,
-                             BENCHLING_TEST_API_KEY          = input$cr_test_key,
-                             GENSCRIPT_TEST_MARKER_FOLDER_ID = input$cr_marker,
-                             BENCHLING_PROD_TENANT_URL       = input$cr_prod_url,
-                             BENCHLING_PROD_API_KEY          = input$cr_prod_key))
+            # Checked before anything is written, so a typo can't half-save the form.
+            if (nzchar(orders) && !dir.exists(orders)) stop("orders folder not found: ", typed)
+            creds_write(list(BENCHLING_TEST_TENANT_URL = input$cr_test_url,
+                             BENCHLING_TEST_API_KEY    = input$cr_test_key,
+                             BENCHLING_PROD_TENANT_URL = input$cr_prod_url,
+                             BENCHLING_PROD_API_KEY    = input$cr_prod_key))
+            app_env_write(list(GS_ORDERS_DIR = orders))
             TRUE
         }, error = function(e) conditionMessage(e))
         if (isTRUE(res)) {
             removeModal()
-            showNotification("Benchling credentials saved.", type = "message")
+            orders_dir_rv(orders)
+            if (embed) {
+                showNotification("Saved. Reload Order Upload to pick up the change.", type = "message")
+            } else {
+                load_orders()
+                showNotification("Settings saved.", type = "message")
+            }
         } else {
             showNotification(paste("Could not save:", res), type = "error", duration = 10)
         }
     }, ignoreInit = TRUE)
+
+    # A browser folder picker can't return an absolute path, and R here runs on the user's own Mac.
+    pick_proc <- NULL
+    observeEvent(input$cr_orders_pick, {
+        if (!is.null(pick_proc)) return()
+        cur <- trimws(input$cr_orders %||% "")
+        loc <- if (nzchar(cur) && dir.exists(cur)) sprintf(' default location (POSIX file "%s")', cur) else ""
+        # Bare `activate` targets osascript itself; System Events would trigger an automation prompt.
+        args <- c("-e", "activate",
+                  "-e", sprintf('POSIX path of (choose folder with prompt "Select the orders folder"%s)', loc))
+        pick_proc <<- tryCatch(processx::process$new("osascript", args, stdout = "|", stderr = "|"),
+                               error = function(e) NULL)
+        if (is.null(pick_proc))
+            showNotification("Could not open the folder picker.", type = "error", duration = 10)
+    }, ignoreInit = TRUE)
+
+    observe({
+        p <- pick_proc
+        if (is.null(p)) return()
+        if (p$is_alive()) { invalidateLater(300); return() }
+        pick_proc <<- NULL
+        out <- tryCatch(trimws(paste(p$read_all_output_lines(), collapse = "")), error = function(e) "")
+        if (!nzchar(out)) return()                       # cancel exits non-zero with no stdout
+        if (nchar(out) > 1L) out <- sub("/$", "", out)   # `choose folder` returns a trailing slash
+        updateTextInput(session, "cr_orders", value = out)
+    })
 
     observeEvent(input$cleanup_confirm, {
         removeModal()

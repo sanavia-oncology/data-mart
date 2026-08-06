@@ -9,7 +9,17 @@ for (fl in list.files(paste0(app_dir, "code"), full.names = TRUE, recursive = TR
 theme <- bslib::bs_theme(version = 5, navbar_bg = "rgba(0, 11, 140, 1)",
                          nav_link_font_size = "16px !important")
 
-bslib::page_navbar(
+# ?embed=creds serves the form alone, so the landing page can iframe it without the app around it.
+embed_creds_page <- function() {
+    bslib::page_fluid(
+        theme = theme,
+        tags$div(class = "p-3",
+                 creds_fields(creds_read(), app_env_get("GS_ORDERS_DIR")),
+                 actionButton("creds_save", "Save", class = "btn-primary"))
+    )
+}
+
+app_page <- function() bslib::page_navbar(
     tags$head(tags$style(HTML(".navbar .nav.navbar-nav { display: none !important; }"))),
     title = tagList(
         tags$a(href = "/", style = "text-decoration: none;",
@@ -24,3 +34,8 @@ bslib::page_navbar(
     footer = footer_section(),
     application_page
 )
+
+function(request) {
+    if (identical(parseQueryString(request$QUERY_STRING)$embed, "creds")) embed_creds_page()
+    else app_page()
+}

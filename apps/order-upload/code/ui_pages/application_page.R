@@ -57,9 +57,11 @@ app_card <- tags$div(
             tags$div(style = "margin-top: auto; text-align: left;",
                      tags$div(id = "cleanup_wrap", style = "display: none;",
                               actionLink("cleanup_btn", "Clean up", class = "cleanup-link")),
-                     tags$div(style = "margin-top: 8px;",
-                              actionLink("creds_btn", "Benchling credentials", class = "cleanup-link")),
-                     tags$div(style = "margin-top: 6px;", uiOutput("env_badge", inline = TRUE)))
+                     tags$div(class = "env-radio", style = "margin-top: 10px;",
+                              radioButtons("env_choice", "Tenant",
+                                           choices = c(Test = "test", Production = "prod"),
+                                           selected = "test", inline = TRUE)),
+                     tags$div(actionLink("creds_btn", "Set App Credentials", class = "cleanup-link")))
         ),
         main_contents
     )
@@ -84,8 +86,9 @@ application_page <- bslib::nav_panel(
         /* Clean up: muted text link, not a button — low-emphasis, hard to hit by accident */
         .cleanup-link { font-size: 12px; color: #9aa0a6; text-decoration: none; }
         .cleanup-link:hover { color: #c1121f; text-decoration: underline; }
-        #env_badge a { text-decoration: none; }
-        #env_badge .env-tag { font-size: 12px; font-weight: 600; letter-spacing: .03em; }
+        .env-radio .control-label { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+        .env-radio .form-check-label { font-size: 12px; }
+        .env-radio .shiny-options-group { margin-bottom: 4px; }
         /* fill the sidebar's flex column so #cleanup_wrap's margin-top:auto pins it to the bottom */
         .sidebar-content { height: 100%; }
 
