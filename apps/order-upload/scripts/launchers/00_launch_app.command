@@ -15,12 +15,4 @@ trap 'kill $(jobs -p) 2>/dev/null' INT TERM EXIT
 
 APP_DIR="$APP" "$R_BIN" --quiet -e "shiny::runApp(Sys.getenv('APP_DIR'), host='127.0.0.1', port=$PORT, launch.browser=FALSE)" &
 
-for i in {1..60}; do
-  if lsof -t -i :$PORT -sTCP:LISTEN >/dev/null 2>&1; then
-    open "http://127.0.0.1:$PORT"
-    break
-  fi
-  sleep 1
-done
-
 wait
