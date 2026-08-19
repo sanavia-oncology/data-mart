@@ -1,9 +1,9 @@
 # author: Kwame Okrah
 # date: 2026-03-04
 
-
-
 server = function(input, output, session) {
+    main_folder = "/Users/kwameokrah/data-depot/00-genscript-orders"
+    
     # 1. submit_order_id
     observe({
         if (nchar(input$order_id_text) <= 1) {
@@ -20,7 +20,7 @@ server = function(input, output, session) {
             )
         }else{
             removeUI("#order_id_div")
-    
+            
             insertUI(
                 selector = "#current_date",
                 where = "afterEnd",
@@ -33,7 +33,9 @@ server = function(input, output, session) {
                     actionButton(inputId="reset_form", 
                                  label="Reset Form",
                                  width="100%",
-                                 disabled=FALSE)
+                                 disabled=FALSE),
+                    tags$div(id="below_reset_div"),
+                    tags$div(id="below_reset_div1")
                 )
             )
             
@@ -53,7 +55,7 @@ server = function(input, output, session) {
                              class="btn-secondary"),
                 tags$div(id="clone_strategy_preproc_bottom_div")
             )
-
+            
             order_summary_sheet_ui = tags$div(
                 class="col",
                 tags$p("Order Summary",
@@ -71,7 +73,7 @@ server = function(input, output, session) {
                              disabled=TRUE),
                 tags$div(id="order_summary_preproc_bottom_div")
             )
-
+            
             location_map_sheet_ui = tags$div(
                 class="col",
                 tags$p("Location Map",
@@ -89,25 +91,31 @@ server = function(input, output, session) {
                              disabled=TRUE),
                 tags$div(id="location_map_preproc_bottom_div")
             )
-
+            
             order_report_sheet_ui = tags$div(
                 class="col",
-                tags$p("Order Report",
-                       class="h5 text-primary fw-bold"),
                 tags$div(
                     id="order_report_sheet_div"
                 ),
-                fileInput("order_report_file",
-                          "Upload order report pdf",
-                          width="100%"),
-                actionButton("order_report_info",
-                             "Get Report Information",
-                             class="btn-secondary",
-                             width="100%",
-                             disabled=TRUE),
-                tags$div(id="order_report_info_bottom_div")
+                tags$div(
+                    id="order_report_sheet_div1",
+                    tags$p("Order Report",
+                           class="h5 text-primary fw-bold"),
+                    tags$div(
+                        id="order_report_sheet_div"
+                    ),
+                    fileInput("order_report_file",
+                              "Upload order report pdf",
+                              width="100%"),
+                    actionButton("order_report_info",
+                                 "Get Report Information",
+                                 class="btn-secondary",
+                                 width="100%",
+                                 disabled=TRUE),
+                    tags$div(id="order_report_info_bottom_div")
+                ),
             )
-
+            
             ui_1 = tags$div(
                 id = "main_contents2",
                 class="row",
@@ -116,7 +124,7 @@ server = function(input, output, session) {
                 location_map_sheet_ui,
                 order_report_sheet_ui
             )
-
+            
             ui_2 = tags$div(
                 id = "main_contents2",
                 class="row",
@@ -133,17 +141,17 @@ server = function(input, output, session) {
                 location_map_sheet_ui,
                 order_report_sheet_ui,
             )
-
+            
             if (input$order_type==1) {
                 ui = ui_1
             }else{
                 ui = ui_2
             }
-
+            
             insertUI(
-                selector = "#main_contents",
-                where = "afterEnd",
-                ui = ui
+                selector="#main_contents",
+                where="afterEnd",
+                ui=ui
             )
             
         }
@@ -503,6 +511,25 @@ server = function(input, output, session) {
                             
                             location_map_val(location_map_df)
                             
+                            removeUI("#below_reset_div1")
+                            
+                            ui2 = tags$div(
+                                id="below_reset_div1",
+                                tags$p(""),
+                                tags$br(),
+                                tags$p(""),
+                                actionButton(inputId="proceed_to_metadata",
+                                             label="Proceed to Metadata",
+                                             class="btn-warning",
+                                             width="100%",
+                                             disabled=FALSE)
+                            )
+                            
+                            insertUI(
+                                "#below_reset_div",
+                                "afterEnd",
+                                ui=ui2
+                            )
                         }
                     }
                 }  
@@ -541,15 +568,7 @@ server = function(input, output, session) {
                     tags$p(paste0("Date: ", meta_data$created),
                            class="h6 text-secondary"),
                     tags$p(paste0(meta_data$pages, " pages"),
-                           class="h6 text-secondary"),
-                    tags$p(""),
-                    tags$br(),
-                    actionButton(inputId="proceed_to_metadata",
-                                 label="Proceed to Add Metadata",
-                                 class="btn-warning",
-                                 width="100%",
-                                 disabled=FALSE),
-                    tags$div(id="order_metadata_bottom_div"),
+                           class="h6 text-secondary")
                 )
                 
                 removeUI("#order_report_info_bottom_div1")
@@ -561,15 +580,13 @@ server = function(input, output, session) {
                 )
             }
         }
-
+        
     }) |> bindEvent(input$order_report_info)
-    
-    
     observe({
-        removeUI("#main_contents2")
+        removeUI("#order_report_sheet_div1")
         
         metadata_ui = tags$div(
-            class="col",
+            id = "order_report_sheet_div1",
             tags$p("Order Metadata",
                    class="h5 text-secondary fw-bold"),
             tags$div(
@@ -581,35 +598,174 @@ server = function(input, output, session) {
             actionButton("order_metadata_preproc",
                          "Preprocess Order Metadata",
                          width="100%",
-                         class="btn-secondary"),
-            tags$div(id="order_metadata_bottom_div")
-        )
-        
-        ui = tags$div(
-            id = "main_contents2",
-            class="row",
-            metadata_ui,
-            tags$div(
-                class="col",
-                tags$p("")
-            ),
-            tags$div(
-                class="col",
-                tags$p("")
-            ),
-            tags$div(
-                class="col",
-                tags$p("")
-            )
+                         class="btn-warning"),
+            tags$div(id="order_metadata_bottom_div"),
+            tags$div(id="order_metadata_bottom_div1")
         )
         
         insertUI(
-            selector="#main_contents",
+            selector="#order_report_sheet_div",
             where="afterEnd",
-            ui=ui
+            ui=metadata_ui
         )
         
     }) |> bindEvent(input$proceed_to_metadata)
+    
+    # 6. metadata_preproc
+    metadata_val = reactiveVal()
+    observe({
+        datapath = input$order_metadata_file$datapath
+        
+        if (is.null(datapath)) {
+            showNotification(
+                ui = paste("Please select a metadata file."),
+                type = "message",
+                duration = 5
+            )
+        }else{
+            ftype = sapply(strsplit(datapath, "\\."), function(x) x[length(x)])
+            
+            if (!ftype %in% c("csv")) {
+                showNotification(
+                    ui = paste("Please load a csv file."),
+                    type = "message",
+                    duration = 5
+                )
+            }else{
+                metadata_df = read.csv(datapath, header = T, check.names = F)
+                
+                if (!"assembly_id" %in% colnames(metadata_df)) {
+                    showNotification(
+                        ui = paste("'assembly_id' column is missing."),
+                        type = "message",
+                        duration = 5
+                    )
+                }else{
+                    cn = colnames(metadata_df)
+                    msg1 = input$order_id_text
+                    msg2 = paste0(length(cn),
+                                  " cols & ",
+                                  nrow(metadata_df),
+                                  " rows")
+                    msg = paste0(msg1, " (", msg2, ")")
+                    
+                    output$metadata_table = DT::renderDataTable(DT::datatable({
+                        data.frame(
+                            "Column"=1:length(cn),
+                            "Name"=cn
+                        )
+                    },
+                    rownames = FALSE,
+                    options = list(pageLength = 4,
+                                   dom = "tpf",
+                                   columnDefs = list(
+                                       list(className='dt-nowrap', targets='_all'))
+                    )))
+                    
+                    ui = tags$div(
+                        id="order_metadata_bottom_div1",
+                        tags$p(""),
+                        tags$br(),
+                        tags$p(msg,
+                               class="h6 text-secondary"),
+                        DT::dataTableOutput("metadata_table"),
+                    )
+                    
+                    removeUI("#order_metadata_bottom_div1")
+                    
+                    insertUI(
+                        selector="#order_metadata_bottom_div",
+                        where="afterEnd",
+                        ui=ui
+                    )
+                    
+                    clone_strategy_df = clone_strategy_val()
+                    over_lap = clone_strategy_df[,"Protein Name"] %in% metadata_df[,"assembly_id"]
+                    over_lap_rate = paste0(round(mean(over_lap) * 100, 2), "%")
+                    
+                    removeUI("#below_reset_div1")
+                    
+                    ui2 = tags$div(
+                        id="below_reset_div1",
+                        tags$p(""),
+                        tags$br(),
+                        tags$p(""),
+                        tags$p(paste0(over_lap_rate, " Match Rate!"),
+                               class="h6 text-secondary"),
+                        actionButton(inputId="merge_sheets",
+                                     label="Merge Order Sheets",
+                                     class="btn-primary",
+                                     width="100%",
+                                     disabled=FALSE)
+                    )
+                    
+                    insertUI(
+                        "#below_reset_div",
+                        "afterEnd",
+                        ui=ui2
+                    )
+                    
+                    metadata_val(metadata_df)
+                }
+            }
+        }
+        
+    }) |> bindEvent(input$order_metadata_preproc)
+    
+    # 7. merge_sheets
+    merged_sheets_val = reactiveVal()
+    observe({
+        order_summary_df = order_summary_val()
+        clone_strategy_df = clone_strategy_val()
+        location_map_df = location_map_val()
+        metadata_df = metadata_val()
+        
+        merge_id = order_summary_df[,"Name"]
+        rownames(clone_strategy_df) = clone_strategy_df[,"Protein Name"]
+        rownames(location_map_df) = location_map_df[,"Name"]
+        rownames(metadata_df) = metadata_df[,"assembly_id"]
+        
+        keep = !colnames(clone_strategy_df) %in% c("Order ID", "Protein Name")
+        clone_strategy_df = clone_strategy_df[merge_id,keep,drop=F]
+        
+        keep = !colnames(location_map_df) %in% c("Order ID", "Name")
+        location_map_df = location_map_df[merge_id,keep,drop=F]
+        
+        metadata_df = metadata_df[merge_id,,drop=F]
+
+        if (input$order_type==1) {
+            order_type = "new_order"
+        }else{
+            order_type = "update_order"
+        }
+        merged_sheets_df = cbind(order_summary_df,
+                                 clone_strategy_df,
+                                 location_map_df,
+                                 order_type = rep(order_type, length(merge_id)),
+                                 metadata_df)
+        
+        rownames(merged_sheets_df) = NULL
+        
+        merged_sheets_val(merged_sheets_df)
+
+        sys_date = Sys.Date()
+        sys_date = substr(sys_date, 1, 7)
+        main_folder_date = paste0(main_folder, "/", sys_date)
+        
+        if (!dir.exists(main_folder_date)) {
+            dir.create(main_folder_date)
+        }
+        
+        order_id_text = input$order_id_text
+        main_folder_order = paste0(main_folder_date, "/", order_id_text)
+        
+        if (!dir.exists(main_folder_order)) {
+            dir.create(main_folder_order)
+        }
+        
+        
+        
+    }) |> bindEvent(input$merge_sheets)
 }
 
-             
+
