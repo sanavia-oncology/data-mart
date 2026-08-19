@@ -6,8 +6,11 @@ library(bslib)
 library(DT)
 library(shinyFiles)
 
+# Set limit to 1 GB
+options(shiny.maxRequestSize = 1000 * 1024^2)
+
 # set app directory
-app_dir = "/Users/kwameokrah/sanavia_apps/data-mart/apps/order-recvd-mart/"
+app_dir = "/Users/kwameokrah/data-lifecycle-apps/data-mart/apps/merge-order-sheets/"
 
 # load helper function
 helper_funcs_dir = paste0(app_dir, "code")

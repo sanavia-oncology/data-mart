@@ -37,6 +37,7 @@ plot_merged_sheet = function(ms, fig_path=NULL) {
 }
 
 
+
 front_page_table = function(merged_sheets_list, 
                             status=NULL,
                             order_type=NULL) {
@@ -47,12 +48,12 @@ front_page_table = function(merged_sheets_list,
     
     mdate = sapply(merged_sheets_list, 
                    function(x) x[["Merge Date"]][1])
-           
+    
     
     oid = sapply(merged_sheets_list, 
                  function(x) sapply(strsplit(x[["Order ID"]][1], "-"), "[[", 1))
     n_mol = sapply(merged_sheets_list, nrow)
-
+    
     if (is.null(status)) {
         status = rep("to_implement", length(oid))    
     }
