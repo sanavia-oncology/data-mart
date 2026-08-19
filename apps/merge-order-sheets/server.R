@@ -598,7 +598,7 @@ server = function(input, output, session) {
             actionButton("order_metadata_preproc",
                          "Preprocess Order Metadata",
                          width="100%",
-                         class="btn-warning"),
+                         class="btn-secondary"),
             tags$div(id="order_metadata_bottom_div"),
             tags$div(id="order_metadata_bottom_div1")
         )
@@ -715,57 +715,122 @@ server = function(input, output, session) {
     # 7. merge_sheets
     merged_sheets_val = reactiveVal()
     observe({
-        order_summary_df = order_summary_val()
-        clone_strategy_df = clone_strategy_val()
-        location_map_df = location_map_val()
-        metadata_df = metadata_val()
         
-        merge_id = order_summary_df[,"Name"]
-        rownames(clone_strategy_df) = clone_strategy_df[,"Protein Name"]
-        rownames(location_map_df) = location_map_df[,"Name"]
-        rownames(metadata_df) = metadata_df[,"assembly_id"]
+        withProgress(message = 'Merge in progress...', 
+                     value = 0, {
+              
+                         
+                         order_summary_df = order_summary_val()
+                         clone_strategy_df = clone_strategy_val()
+                         location_map_df = location_map_val()
+                         metadata_df = metadata_val()
+                         
+                         merge_id = order_summary_df[,"Name"]
+                         rownames(clone_strategy_df) = clone_strategy_df[,"Protein Name"]
+                         rownames(location_map_df) = location_map_df[,"Name"]
+                         rownames(metadata_df) = metadata_df[,"assembly_id"]
+                         
+                         keep = !colnames(clone_strategy_df) %in% c("Order ID", "Protein Name")
+                         clone_strategy_df = clone_strategy_df[merge_id,keep,drop=F]
+                         
+                         keep = !colnames(location_map_df) %in% c("Order ID", "Name")
+                         location_map_df = location_map_df[merge_id,keep,drop=F]
+                         
+                         metadata_df = metadata_df[merge_id,,drop=F]
+                         
+                         if (input$order_type==1) {
+                             order_type = "new_order"
+                         }else{
+                             order_type = "update_order"
+                         }
+                         merged_sheets_df = cbind(order_summary_df,
+                                                  clone_strategy_df,
+                                                  location_map_df,
+                                                  order_type = rep(order_type, length(merge_id)),
+                                                  metadata_df)
+                         
+                         rownames(merged_sheets_df) = NULL
+                         
+                         merged_sheets_val(merged_sheets_df)
+                         
+                         sys_date_ = Sys.Date()
+                         sys_date = substr(sys_date_, 1, 7)
+                         main_folder_date = paste0(main_folder, "/", sys_date)
+                         
+                         if (!dir.exists(main_folder_date)) {
+                             dir.create(main_folder_date)
+                         }
+                         
+                         order_id_text = input$order_id_text
+                         main_folder_order = paste0(main_folder_date, "/", order_id_text)
+                         
+                         if (!dir.exists(main_folder_order)) {
+                             dir.create(main_folder_order)
+                         }
+                         
+                         main_merged_sheets = paste0(main_folder_order, "/merged_sheets")
+                         main_order_data = paste0(main_folder_order, "/order_data")
+                         
+                         if (!dir.exists(main_merged_sheets)) {
+                             dir.create(main_merged_sheets)
+                         }
+                         if (!dir.exists(main_order_data)) {
+                             dir.create(main_order_data)
+                         }
+                         
+                         main_merged_sheets_name = paste0(order_id_text, "_",
+                                                          order_type, "_", 
+                                                          sys_date_, 
+                                                          "-merged-sheets.csv")
+                         
+                         merged_sheets_path = paste0(main_merged_sheets, 
+                                                     "/", 
+                                                     main_merged_sheets_name)
+                         
+                         write.csv(merged_sheets_df, file=merged_sheets_path, row.names=F)
+                         
+                         hold = list(input$clone_strategy_file,
+                                     input$order_summary_file,
+                                     input$location_map_file,
+                                     input$order_report_file)
+                         
+                         for (i in 1:length(hold)) {
+                             info = hold[[i]]
+                             if (!is.null(info)) {
+                                 print(class(info))
+                                 cmd = paste0("cp ",
+                                              info[,"datapath"], " ",
+                                              paste0(main_order_data, "/",
+                                                     gsub(" ", "_", info[,"name"])))
+                                 system(cmd)
+                             }
+                         }
+                         
+        })
         
-        keep = !colnames(clone_strategy_df) %in% c("Order ID", "Protein Name")
-        clone_strategy_df = clone_strategy_df[merge_id,keep,drop=F]
         
-        keep = !colnames(location_map_df) %in% c("Order ID", "Name")
-        location_map_df = location_map_df[merge_id,keep,drop=F]
+        removeUI("#below_reset_div1")
         
-        metadata_df = metadata_df[merge_id,,drop=F]
-
-        if (input$order_type==1) {
-            order_type = "new_order"
-        }else{
-            order_type = "update_order"
-        }
-        merged_sheets_df = cbind(order_summary_df,
-                                 clone_strategy_df,
-                                 location_map_df,
-                                 order_type = rep(order_type, length(merge_id)),
-                                 metadata_df)
+        ui2 = tags$div(
+            id="below_reset_div1",
+            tags$p(""),
+            tags$br(),
+            tags$p(""),
+            tags$p("Merge Complete!",
+                   class="h6 text-secondary"),
+            # downloadButton()
+        )
         
-        rownames(merged_sheets_df) = NULL
-        
-        merged_sheets_val(merged_sheets_df)
-
-        sys_date = Sys.Date()
-        sys_date = substr(sys_date, 1, 7)
-        main_folder_date = paste0(main_folder, "/", sys_date)
-        
-        if (!dir.exists(main_folder_date)) {
-            dir.create(main_folder_date)
-        }
-        
-        order_id_text = input$order_id_text
-        main_folder_order = paste0(main_folder_date, "/", order_id_text)
-        
-        if (!dir.exists(main_folder_order)) {
-            dir.create(main_folder_order)
-        }
-        
+        insertUI(
+            "#below_reset_div",
+            "afterEnd",
+            ui=ui2
+        )
         
         
     }) |> bindEvent(input$merge_sheets)
 }
+
+
 
 
