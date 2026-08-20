@@ -2,10 +2,8 @@
 # date: 2026-03-04
 
 server = function(input, output, session) {
-    main_folder = "/Users/kwameokrah/data-depot/00-genscript-orders"
-    
-    # dotenv::load_dot_env("~/.xyz")
-    # main_folder = Sys.getenv("MAIN_DIR")
+    dotenv::load_dot_env("~/.env_data_mart_order_upload")
+    main_folder = Sys.getenv("GS_ORDERS_DIR")
      
     # organize file paths by order
     order_files_paths = get_paths_by_order(main_folder)
