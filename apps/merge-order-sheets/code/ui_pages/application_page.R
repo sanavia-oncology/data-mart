@@ -26,6 +26,18 @@ app_card = tags$div(
                 id="current_date"
             ),
             
+            # tags$div(
+            #     id="goto_database_div",
+            #     actionButton(
+            #         "goto_database",
+            #         "Go to Database",
+            #         class="btn-warning",
+            #         width = "100%",
+            #     ),
+            #     tags$p(""),
+            #     tags$p("OR"),
+            # ),
+
             tags$div(
                 id = "order_id_div",
                 

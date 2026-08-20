@@ -36,42 +36,78 @@ plot_merged_sheet = function(ms, fig_path=NULL) {
     }
 }
 
-
-
-front_page_table = function(merged_sheets_list, 
-                            status=NULL,
-                            order_type=NULL) {
-    odate = names(merged_sheets_list)
-    odate = paste0(substr(odate, 1, 4), "-", 
-                   substr(odate, 5, 6), "-", 
-                   substr(odate, 7, 8))
+front_page_table = function(merged_sheets_list){
+    oid = names(merged_sheets_list)
     
     mdate = sapply(merged_sheets_list, 
-                   function(x) x[["Merge Date"]][1])
+                   function(x) x[["merge_date"]][1])
     
+    gdate = sapply(merged_sheets_list, 
+                   function(x) x[["genscript_date"]][1])
     
-    oid = sapply(merged_sheets_list, 
-                 function(x) sapply(strsplit(x[["Order ID"]][1], "-"), "[[", 1))
     n_mol = sapply(merged_sheets_list, nrow)
     
-    if (is.null(status)) {
-        status = rep("to_implement", length(oid))    
-    }
+    order_type = sapply(merged_sheets_list, 
+                        function(x) x[["order_type"]][1])
     
-    if (is.null(order_type)) {
-        order_type = rep("to_implement", length(oid))    
-    }
+    assembly_type = sapply(merged_sheets_list,
+                           function(x) paste0(sort(unique(x[["assembly_type"]])),
+                                              collapse = "|"))
     
+    assembly_type = gsub("AT", "", assembly_type)
+    assembly_type = paste0("AT", assembly_type)
     
-    df = data.frame("Date"=odate,
-                    "Order ID"=oid,
-                    "Order Size"=n_mol,
-                    "Order Type"=order_type,
-                    "Status"=status,
+    df = data.frame("merge_date"=mdate,
+                    "order_id"=oid,
+                    "size"=n_mol,
+                    "type"=order_type,
+                    "prod_date"=gdate,
+                    "assembly_type"=assembly_type,
                     check.names = F)
     
-    df = df[rev(order(df$Date)),,drop=F]
+    df = df[rev(order(df$merge_date, df$prod_date)),,drop=F]
     rownames(df) = NULL
     
     return(df)
 }
+
+
+make_front_page_table = function(order_files_paths) {
+    # read in all merged_sheet.csv
+    merged_sheets_list = list()
+    
+    for (order_folder in names(order_files_paths)) {
+        fls = order_files_paths[[order_folder]]
+        
+        dat = read.csv(fls[grep("merged-sheets.csv$", fls)], 
+                       header = TRUE,
+                       check.names = FALSE,
+                       stringsAsFactors = FALSE)
+        
+        location_map = fls[grep("Summary", fls)]
+        location_map = sapply(strsplit(location_map, "Summary"), "[[", 2)
+        location_map = gsub("[A-Z]|[a-z]", "", location_map)
+        location_map = gsub("_|\\.", "", location_map)
+        
+        if (!gsub("[0-9]", "", location_map) == "") {
+            dat$genscript_date = "Unknown"
+        }else{
+            if (!nchar(location_map)==8) {
+                dat$genscript_date = "Unknown"
+            }else{
+                month = substr(location_map, 1, 2)
+                day = substr(location_map, 3, 4)
+                yr = substr(location_map, 5, 8)
+                dat$genscript_date = paste0(yr, "-", month, "-", day)
+            }
+        }
+        
+        merged_sheets_list[[order_folder]] = dat
+    }
+    
+    table_front_page = front_page_table(merged_sheets_list)
+    
+    return(table_front_page)
+}
+
+
