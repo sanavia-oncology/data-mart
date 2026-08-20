@@ -140,11 +140,8 @@ server <- function(input, output, session) {
         df <- load_orders()
         launch_status(if (nrow(df)) df$order_id else character(0))
     })
-    # Or a fresh machine reads "No" for every order until someone hits Refresh.
-    if (!embed) isolate({
-        df0 <- load_orders()
-        launch_status(if (nrow(df0)) df0$order_id else character(0))
-    })
+    # Disk only, so the table is up as soon as the page is; the mirror stands until a Refresh.
+    if (!embed) isolate(load_orders())
 
     # The sync's answer wins where it differs; a failed/empty run leaves the mirror's values alone.
     observe({
@@ -467,7 +464,8 @@ server <- function(input, output, session) {
         env_rv(input$env_choice)
         status_rv(list())            # the mirror is per-tenant; drop what the old one said
         df <- load_orders()
-        launch_status(if (nrow(df)) df$order_id else character(0))   # same reason as startup
+        # Still checks here: switching tenants is deliberate, and prod is where stale reads hurt.
+        launch_status(if (nrow(df)) df$order_id else character(0))
         showNotification(sprintf("Now using the %s tenant.", toupper(env_rv())), type = "message")
     }, ignoreInit = TRUE)
 

@@ -89,7 +89,7 @@ LOT_FIELDS: list[tuple[str, str, callable, bool]] = [
     ("Name",                          "Protein Name",                    empty_to_none, True),
     ("Order ID",                      "Order number",                    empty_to_none, True),
     ("Lot No",                        "Lot number",                      empty_to_none, True),
-    ("Merge Date",                    "Date received",                   empty_to_none, True),
+    ("merge_date",                    "Date received",                   empty_to_none, True),
     ("Type",                          "Type",                            empty_to_none, True),
     ("Ship Temp (Deg. Cels.)",        "Ship Temp (Deg. Cels.)",          to_float,      True),
     ("Cal. M.W.(KDa)",                "Cal. M.W.(KDa)",                  to_float,      True),
@@ -104,9 +104,8 @@ LOT_FIELDS: list[tuple[str, str, callable, bool]] = [
     ("Total(mg)",                     "Total amount (mg)",               to_float,      True),
     ("Size-Volume(ml)",               "Size volume (mL)",                empty_to_none, False),
     ("Unit(Tube)",                    "Units (tubes)",                   empty_to_none, False),
-    ("no_of_seqs",                    "Number of sequences",             to_float,      False),
-    ("no_expected_seqs",              "Number of expected sequences",    to_float,      False),
     ("assembly_id",                   "Assembly ID",                     empty_to_none, False),
+    ("assembly_id_alias",             "Assembly ID alias",               empty_to_none, False),
     ("assembly_type",                 "Assembly type",                   empty_to_none, False),
     ("assembly_type_alias",           "Assembly type alias",             empty_to_none, False),
     ("target1",                       "Target1",                         empty_to_none, False),
@@ -202,7 +201,7 @@ def build_tubes(df: pd.DataFrame) -> list[list[dict]]:
                 "btype": btype,
                 "pos":   normalize_pos(poss[k]),
                 "vol":   vols[k],
-                "merge": row["Merge Date"],
+                "merge": row["merge_date"],
             })
         out.append(tubes)
     if overridden:
