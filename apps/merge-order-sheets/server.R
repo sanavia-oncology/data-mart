@@ -140,9 +140,13 @@ server = function(input, output, session) {
     
     
     # Part II ----------------------------------------------------------- #
+    clone_strategy_val = reactiveVal()
+    order_summary_val = reactiveVal()
+    location_map_val = reactiveVal()
+    metadata_val = reactiveVal()
+    merged_sheets_val = reactiveVal()
     
     # 1. submit_order_id
-    clone_strategy_val = reactiveVal()
     observe({
         if (input$order_type==1) {
             
@@ -170,7 +174,7 @@ server = function(input, output, session) {
                 selectizeInput( 
                     "previous_id", 
                     "Previous Order ID", 
-                    c("None", names(order_files_paths))
+                    c("None", table_front_page$order_id)
                 ),
                 
                 textInput( 
@@ -377,8 +381,15 @@ server = function(input, output, session) {
                     ms = read.csv(sel_paths[grep("-merged-sheets.csv$", sel_paths)],
                                   header = T, check.names = F)
                     
-                    colnames(ms)[colnames(ms) == "Name"] = "Protein Name"
-                    clone_strategy_val(ms)
+                    cms_ = colnames(ms)
+                    cms = cms_[grep("^sequence|^Order ID|^Name", cms_)]
+                    ms_sub = ms[,cms,drop=F]
+                    
+                    colnames(ms_sub)[colnames(ms_sub)=="Name"] = "Protein Name"
+                    clone_strategy_val(ms_sub)
+                    
+                    ms_key = ms[,which(cms_ == "assembly_id"):ncol(ms),drop=F]
+                    metadata_val(ms_key)
                     
                     removeUI("#order_id_div")
                     removeUI("#goto_database_div")
@@ -404,15 +415,18 @@ server = function(input, output, session) {
                     
                     previous_order_sheet_ui = tags$div(
                         class="col",
-                        tags$p("Previous Order",
+                        tags$p("Clone strategy",
                                class="h5 text-primary fw-bold"),
                         tags$div(
                             id="previous_order_sheet_div"
                         ),
                         tags$p(""),
                         tags$br(),
-                        tags$p(paste0(oid, " (Size=", nrow(ms), ")"),
-                               class="h6 text-secondary"),
+                        tags$div(id="prev_card_bottom_div"),
+                        tags$div(id="prev_card_bottom_div1",
+                             tags$p(paste0(oid, " (Size=", nrow(ms), ")"),
+                                    class="h6 text-secondary")
+                        )
                     )
                     
                     order_summary_sheet_ui = tags$div(
@@ -605,7 +619,6 @@ server = function(input, output, session) {
     }) |> bindEvent(input$clone_strategy_preproc)
     
     # 3. order_summary_preproc
-    order_summary_val = reactiveVal()
     observe({
         datapath = input$order_summary_file$datapath
         
@@ -686,11 +699,20 @@ server = function(input, output, session) {
                             }
                             
                             if (!id_check) {
-                                showNotification(
-                                    ui = "Clone_Strategy 'Protein Name' and Order_Summary 'Name' do not match!",
-                                    type = "message",
-                                    duration = 5
-                                )
+                                if (input$order_type==1) {
+                                    showNotification(
+                                        ui = "Clone_Strategy 'Protein Name' and Order_Summary 'Name' do not match!",
+                                        type = "message",
+                                        duration = 5
+                                    )
+                                }
+                                if (input$order_type==2) {
+                                    showNotification(
+                                        ui = "Order_Summary 'Name' is not contained in Clone_Strategy 'Protein Name'!",
+                                        type = "message",
+                                        duration = 5
+                                    )
+                                }
                             }else{
                                 cn = colnames(order_summary_df)
                                 msg1 = obs_order_id
@@ -735,11 +757,19 @@ server = function(input, output, session) {
                                                    disabled=FALSE)
                                 
                                 order_summary_val(order_summary_df)
+               
+                                if (input$order_type==2) {
+                                    rownames(clone_strategy_df) = clone_strategy_df$"Protein Name"
+                                    clone_strategy_df = clone_strategy_df[order_summary_df$Name,,drop=F]
+                                    clone_strategy_val(clone_strategy_df)
+                                    
+                                    metadata_df = metadata_val()
+                                    rownames(metadata_df) = metadata_df$assembly_id
+                                    metadata_df = metadata_df[order_summary_df$Name,,drop=F]
+                                    metadata_val(metadata_df) 
+                                }
                                 
-                                rownames(clone_strategy_df) = clone_strategy_df$"Protein Name"
-                                clone_strategy_df = clone_strategy_df[order_summary_df$Name,,drop=F]
-                                
-                                clone_strategy_val(clone_strategy_df)
+                        
                             }
                         }
                     }
@@ -750,7 +780,6 @@ server = function(input, output, session) {
     }) |> bindEvent(input$order_summary_preproc)
     
     # 4. location_map_preproc
-    location_map_val = reactiveVal()
     observe({
         datapath = input$location_map_file$datapath
         
@@ -885,7 +914,7 @@ server = function(input, output, session) {
                                 tags$p(""),
                                 tags$p(paste0("100% Match Rate!"),
                                        class="h6 text-secondary"),
-                                actionButton(inputId="merge_sheets2",
+                                actionButton(inputId="merge_sheets",
                                              label="Merge Order Sheets",
                                              class="btn-primary",
                                              width="100%",
@@ -987,7 +1016,6 @@ server = function(input, output, session) {
     }) |> bindEvent(input$proceed_to_metadata)
     
     # 6. metadata_preproc
-    metadata_val = reactiveVal()
     observe({
         datapath = input$order_metadata_file$datapath
         
@@ -1088,9 +1116,7 @@ server = function(input, output, session) {
     }) |> bindEvent(input$order_metadata_preproc)
     
     # 7. merge_sheets
-    merged_sheets_val = reactiveVal()
     observe({
-
         withProgress(message = 'Merge in progress...', 
                      value = 0, {
               
@@ -1115,7 +1141,7 @@ server = function(input, output, session) {
                          if (input$order_type==1) {
                              order_type = "new_order"
                          }else{
-                             order_type = "update_order"
+                             order_type = "update"
                          }
                          merged_sheets_df = cbind(order_summary_df,
                                                   clone_strategy_df,
@@ -1192,14 +1218,8 @@ server = function(input, output, session) {
             tags$p("Merge complete!",
                    class="h6 text-secondary"),
             tags$br(),
-            tags$p("Exit app",
+            tags$p("You may exit app",
                    class="h6 text-secondary"),
-            # actionButton(
-            #     "reset_form",
-            #     "Go to Frontpage",
-            #     class="btn-warning",
-            #     width = "100%",
-            # )
         )
         
         insertUI(
@@ -1208,8 +1228,9 @@ server = function(input, output, session) {
             ui=ui2
         )
         
+        removeUI("#main_contents2")
+        
     }) |> bindEvent(input$merge_sheets)
-    
     
 }
 
