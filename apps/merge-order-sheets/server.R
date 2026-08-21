@@ -4,7 +4,9 @@
 server = function(input, output, session) {
     dotenv::load_dot_env("~/.env_data_mart_order_upload")
     main_folder = Sys.getenv("GS_ORDERS_DIR")
-     
+    
+    
+    # Part I ------------------------------------------------------------ #
     # organize file paths by order
     order_files_paths = get_paths_by_order(main_folder)
     
@@ -29,7 +31,7 @@ server = function(input, output, session) {
             },
             rownames = TRUE,
             selection = "single",
-            options = list(pageLength=8,
+            options = list(pageLength=6,
                            dom = "tpf",
                            columnDefs = list(
                                list(className='dt-nowrap', targets='_all'))
@@ -47,7 +49,7 @@ server = function(input, output, session) {
                     tags$div(
                         id="table_div"
                     ),
-                    tags$p("Select a row to see QC preview or to download",
+                    tags$p("Select a row to download data",
                            class="h6 text-secondary"),
                     tags$p(""),
                     DT::dataTableOutput("front_table"),
@@ -57,9 +59,14 @@ server = function(input, output, session) {
                 tags$div(
                     class="col",
                     id="col2_div",
-                    
-                    tags$p("QC preview window",
-                           class="h5 text-secondary"),
+                    tags$p("Purity and concentration graph",
+                           class="h5 text-primary fw-bold"),
+                    tags$div(
+                        id="table_div"
+                    ),
+                    tags$p("Select a row to see QC graph",
+                           class="h6 text-secondary"),
+                    tags$p(""),
                     
                     tags$div(
                         id="qc_preview_bottom"
@@ -67,6 +74,7 @@ server = function(input, output, session) {
                     tags$div(
                         id="qc_preview_bottom1",
                     ),
+                
                 )
             )
             
@@ -79,6 +87,59 @@ server = function(input, output, session) {
         
     })
     
+    ms_val = reactiveVal()
+    ms_val2 = reactiveVal()
+    observe({
+        sel = input$front_table_rows_selected
+        oid = table_front_page[sel, "order_id"]
+        sel_paths = order_files_paths[[oid]]
+        
+        ms = read.csv(sel_paths[grep("-merged-sheets.csv$", sel_paths)],
+                      header = T, check.names = F)
+        
+        ms_val(ms)
+        ms_val2(oid)
+        
+        output$plot = renderPlot( { 
+                plot_qc_metrics(ms)
+        }) 
+        
+        ui = tags$div(
+            id="qc_preview_bottom1",
+            card(
+                plotOutput("plot", width = "100%", height = "350px")    
+            )
+        )
+        
+        removeUI("#qc_preview_bottom1")
+        
+        insertUI(
+            "#qc_preview_bottom",
+            "afterEnd",
+            ui = ui
+        )
+    
+    }) |> bindEvent(input$front_table_rows_selected)
+
+    # download_order_sheets download handler
+    output$download_order_sheets = downloadHandler(
+        filename = function() {
+            if (is.null(ms_val2())) {
+                tmp = "EMPTY"
+            }else{
+                tmp = ms_val2()
+            }
+            paste0(tmp, "_", Sys.Date(), "_merged-order-sheets.csv")
+        },
+        content = function(file) {
+            res = ms_val()
+            write.csv(res,
+                      file, row.names = FALSE)
+        }
+    )
+    
+    
+    # Part II ----------------------------------------------------------- #
     # 1. submit_order_id
     observe({
         if (nchar(input$order_id_text) <= 1) {
@@ -987,16 +1048,6 @@ server = function(input, output, session) {
         
     }) |> bindEvent(input$goto_database)
     
-    # # target_order_download_csv download handler
-    # output$target_order_download_csv = downloadHandler(
-    #     filename = function() {
-    #         paste0("target_order_", Sys.Date(), ".csv")
-    #     },
-    #     content = function(file) {
-    #         write.csv(target_order_vals$target_dict_order, 
-    #                   file, row.names = FALSE)
-    #     }
-    # )
 }
 
 

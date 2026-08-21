@@ -111,3 +111,55 @@ make_front_page_table = function(order_files_paths) {
 }
 
 
+
+plot_qc_metrics = function(x) {
+    op = par(mfrow=c(1, 2))
+    
+    conc = x[,"Concentration(mg/ml)"]
+    purity_sds = x[,"Purity by CE-SDS under NR(%)"]
+    purity_hplc = x[,"Purity by SEC-HPLC(%)"]
+    
+    conc4 = conc > 4
+    conc[conc4] = 4
+    
+    main = sapply(strsplit(x[1, "Order ID"], "-"), "[[", 1)
+    
+    plot(conc, purity_sds, ylim=c(0, 100),
+         xlim = c(0, 4), pch=19,
+         main = paste0(main, ": Conc. x Purity (CE-SDS)"),
+         col = "steelblue",
+         ylab = "Purity by CE-SDS under NR(%)",
+         xlab = "Concentration(mg/ml)")
+    abline(h=seq(0, 100, 10), v=seq(0, 4, .5), lty=3)
+    points(conc[conc4], purity_sds[conc4], pch="x", col="red", lwd=1.5)
+    
+    if (sum(conc4, na.rm = T) > 0) {
+        text(3, 15, "x = conc. > 4 (mg/ml)", lwd=2, cex=1, col="red2")
+    }
+    mtext(paste0("Date: ", Sys.Date()), 3, 2.75, col="gray80")
+    
+    plot(conc, purity_hplc, ylim=c(0, 100),
+         main = paste0(main, ": Conc. x Purity (SEC-HPLC)"),
+         xlim=c(0, 4), pch=19,
+         col = "steelblue",
+         ylab = "Purity by SEC-HPLC(%)",
+         xlab = "Concentration(mg/ml)")
+    abline(h=seq(0, 100, 10), v=seq(0, 4, .5), lty=3)
+    points(conc[conc4], purity_hplc[conc4], pch="x", col="red", lwd=1.5)
+    
+    if (sum(conc4, na.rm = T) > 0) {
+        text(3, 15, "x = conc. > 4 (mg/ml)", lwd=2, cex=1, col="red2")
+    }
+    mtext(paste0("Date: ", Sys.Date()), 3, 2.75, col="gray80")
+    
+    par(op)
+}
+
+
+qc_metrics = function(x, cc = 0.1, pc = 90) {
+    conc = x[,"Concentration(mg/ml)"]
+    purity_sds = x[,"Purity by CE-SDS under NR(%)"]
+    sel = conc > cc & purity_sds > pc
+    sel[is.na(sel)] = FALSE
+    sel
+}    
