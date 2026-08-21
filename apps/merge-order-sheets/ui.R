@@ -10,8 +10,7 @@ library(shinyFiles)
 options(shiny.maxRequestSize = 1000 * 1024^2)
 
 # set app directory
-dotenv::load_dot_env("~/.env_data_mart_order_upload")
-app_dir = Sys.getenv("MERGE_ORDER_APP")
+app_dir = paste0(getwd(), "/")
 
 # load helper function
 helper_funcs_dir = paste0(app_dir, "code")
