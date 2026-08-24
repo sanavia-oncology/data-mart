@@ -96,7 +96,7 @@ server = function(input, output, session) {
         
         ms = read.csv(sel_paths[grep("-merged-sheets.csv$", sel_paths)],
                       header = T, check.names = F)
-        
+
         ms_val(ms)
         ms_val2(oid)
         

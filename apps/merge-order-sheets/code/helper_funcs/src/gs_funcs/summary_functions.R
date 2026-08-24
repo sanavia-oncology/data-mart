@@ -115,43 +115,110 @@ make_front_page_table = function(order_files_paths) {
 plot_qc_metrics = function(x) {
     op = par(mfrow=c(1, 2))
     
-    conc = x[,"Concentration(mg/ml)"]
-    purity_sds = x[,"Purity by CE-SDS under NR(%)"]
-    purity_hplc = x[,"Purity by SEC-HPLC(%)"]
+    if ("Concentration(mg/ml)" %in% colnames(x)) {
+        conc = x[,"Concentration(mg/ml)"]    
+    }else{
+        conc = NA
+    }
     
+    if ("Purity by CE-SDS under NR(%)" %in% colnames(x)) {
+        purity_sds = x[,"Purity by CE-SDS under NR(%)"]
+    }else{
+        purity_sds = NA
+    }
+    
+    if ("Purity by SEC-HPLC(%)" %in% colnames(x)) {
+        purity_hplc = x[,"Purity by SEC-HPLC(%)"]    
+    }else{
+        purity_hplc = NA
+    }
+
     conc4 = conc > 4
     conc[conc4] = 4
     
     main = sapply(strsplit(x[1, "Order ID"], "-"), "[[", 1)
     
-    plot(conc, purity_sds, ylim=c(0, 100),
-         xlim = c(0, 4), pch=19,
-         main = paste0(main, ": Conc. x Purity (CE-SDS)"),
-         col = "steelblue",
-         ylab = "Purity by CE-SDS under NR(%)",
-         xlab = "Concentration(mg/ml)")
-    abline(h=seq(0, 100, 10), v=seq(0, 4, .5), lty=3)
-    points(conc[conc4], purity_sds[conc4], pch="x", col="red", lwd=1.5)
-    
-    if (sum(conc4, na.rm = T) > 0) {
-        text(3, 15, "x = conc. > 4 (mg/ml)", lwd=2, cex=1, col="red2")
+    if (all(is.na(conc)) | all(is.na(purity_sds))) {
+        plot(0, 0, ylim=c(0, 100),
+             xlim = c(0, 4), pch="",
+             main = paste0(main, ": Conc. x Purity (CE-SDS)"),
+             col = "steelblue",
+             ylab = "Purity by CE-SDS under NR(%)",
+             xlab = "Concentration(mg/ml)")
+        abline(h=seq(0, 100, 10), v=seq(0, 4, .5), lty=3)
+        
+        if (all(is.na(conc))) {
+            text(2, 40, 
+                 paste0("Concentration(mg/ml)\n",
+                        "Not In order sheet"))
+        }
+        
+        if (all(is.na(purity_sds))) {
+            text(2, 80, 
+                 paste0("Purity by CE-SDS under NR(%)\n",
+                        "Not In order sheet"))
+            
+        }
+       
+        mtext(paste0("Date: ", Sys.Date()), 3, 2.75, col="gray80")
+        
+    }else{
+        plot(conc, purity_sds, ylim=c(0, 100),
+             xlim = c(0, 4), pch=19,
+             main = paste0(main, ": Conc. x Purity (CE-SDS)"),
+             col = "steelblue",
+             ylab = "Purity by CE-SDS under NR(%)",
+             xlab = "Concentration(mg/ml)")
+        abline(h=seq(0, 100, 10), v=seq(0, 4, .5), lty=3)
+        points(conc[conc4], purity_sds[conc4], pch="x", col="red", lwd=1.5)
+        
+        if (sum(conc4, na.rm = T) > 0) {
+            text(3, 15, "x = conc. > 4 (mg/ml)", lwd=2, cex=1, col="red2")
+        }
+        mtext(paste0("Date: ", Sys.Date()), 3, 2.75, col="gray80")
     }
-    mtext(paste0("Date: ", Sys.Date()), 3, 2.75, col="gray80")
+
     
-    plot(conc, purity_hplc, ylim=c(0, 100),
-         main = paste0(main, ": Conc. x Purity (SEC-HPLC)"),
-         xlim=c(0, 4), pch=19,
-         col = "steelblue",
-         ylab = "Purity by SEC-HPLC(%)",
-         xlab = "Concentration(mg/ml)")
-    abline(h=seq(0, 100, 10), v=seq(0, 4, .5), lty=3)
-    points(conc[conc4], purity_hplc[conc4], pch="x", col="red", lwd=1.5)
+    if (all(is.na(conc)) | all(is.na(purity_hplc))) {
+        plot(0, 0, ylim=c(0, 100),
+             main = paste0(main, ": Conc. x Purity (SEC-HPLC)"),
+             xlim=c(0, 4), pch="",
+             col = "steelblue",
+             ylab = "Purity by SEC-HPLC(%)",
+             xlab = "Concentration(mg/ml)")
+        abline(h=seq(0, 100, 10), v=seq(0, 4, .5), lty=3)
+ 
+        if (all(is.na(conc))) {
+            text(2, 40, 
+                 paste0("Concentration(mg/ml)\n",
+                        "Not In order sheet"))
+        }
+        
+        if (all(is.na(purity_hplc))) {
+            text(2, 80, 
+                 paste0("Purity by SEC-HPLC(%)\n",
+                        "Not In order sheet"))
+            
+        }
+
+        mtext(paste0("Date: ", Sys.Date()), 3, 2.75, col="gray80")
     
-    if (sum(conc4, na.rm = T) > 0) {
-        text(3, 15, "x = conc. > 4 (mg/ml)", lwd=2, cex=1, col="red2")
+    }else{
+        plot(conc, purity_hplc, ylim=c(0, 100),
+             main = paste0(main, ": Conc. x Purity (SEC-HPLC)"),
+             xlim=c(0, 4), pch=19,
+             col = "steelblue",
+             ylab = "Purity by SEC-HPLC(%)",
+             xlab = "Concentration(mg/ml)")
+        abline(h=seq(0, 100, 10), v=seq(0, 4, .5), lty=3)
+        points(conc[conc4], purity_hplc[conc4], pch="x", col="red", lwd=1.5)
+        
+        if (sum(conc4, na.rm = T) > 0) {
+            text(3, 15, "x = conc. > 4 (mg/ml)", lwd=2, cex=1, col="red2")
+        }
+        mtext(paste0("Date: ", Sys.Date()), 3, 2.75, col="gray80")
     }
-    mtext(paste0("Date: ", Sys.Date()), 3, 2.75, col="gray80")
-    
+ 
     par(op)
 }
 
