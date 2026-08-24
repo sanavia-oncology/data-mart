@@ -110,8 +110,6 @@ make_front_page_table = function(order_files_paths) {
     return(table_front_page)
 }
 
-
-
 plot_qc_metrics = function(x) {
     op = par(mfrow=c(1, 2))
     
@@ -221,7 +219,6 @@ plot_qc_metrics = function(x) {
  
     par(op)
 }
-
 
 qc_metrics = function(x, cc = 0.1, pc = 90) {
     conc = x[,"Concentration(mg/ml)"]
