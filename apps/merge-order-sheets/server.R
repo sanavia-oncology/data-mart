@@ -1138,6 +1138,13 @@ server = function(input, output, session) {
                          
                          metadata_df = metadata_df[merge_id,,drop=F]
                          
+                         na_assembly_id = is.na(metadata_df[,"assembly_id"])
+                         if (any(na_assembly_id)) {
+                             tmp = merge_id[na_assembly_id]
+                             metadata_df[na_assembly_id,"assembly_id"] = tmp
+                             metadata_df[na_assembly_id,"assembly_id_alias"] = tmp
+                         }
+                         
                          if (input$order_type==1) {
                              order_type = "new_order"
                          }else{
