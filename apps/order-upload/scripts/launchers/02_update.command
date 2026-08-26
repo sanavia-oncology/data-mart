@@ -6,7 +6,7 @@ REPO_URL="https://github.com/sanavia-oncology/data-mart.git"
 ROOT="$HOME/sanavia-apps"
 REPO="$ROOT/data-mart"
 APP="$REPO/apps/order-upload"
-PORT=3005
+PORTS=(3005 3004)   # the clone wipes both apps, so stop merge-order-sheets too
 
 # Running the in-repo copy would delete this file while the shell is still reading it.
 if [[ "${0:A}" == "$REPO"/* ]]; then
@@ -18,12 +18,14 @@ for tool in git python3; do
   command -v "$tool" >/dev/null 2>&1 || { print -u2 "$tool not found in PATH"; exit 1; }
 done
 
-pids=$(lsof -t -i :$PORT -sTCP:LISTEN 2>/dev/null || true)
-if [[ -n "$pids" ]]; then
-  print "stopping the app on $PORT"
-  kill $pids 2>/dev/null || true
-  sleep 1
-fi
+for port in $PORTS; do
+  pids=$(lsof -t -i :$port -sTCP:LISTEN 2>/dev/null || true)
+  if [[ -n "$pids" ]]; then
+    print "stopping the app on $port"
+    kill $pids 2>/dev/null || true
+  fi
+done
+sleep 1
 
 mkdir -p "$ROOT"
 rm -rf "$REPO"
