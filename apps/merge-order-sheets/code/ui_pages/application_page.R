@@ -26,14 +26,14 @@ app_card = tags$div(
                 id="current_date"
             ),
 
-            radioButtons( 
-                inputId = "order_type", 
-                label = "Order Type", 
-                choices = list( 
-                    "New order" = 1, 
-                    "Update" = 2
-                ) 
-            ),
+            # radioButtons( 
+            #     inputId = "order_type", 
+            #     label = "Order Type", 
+            #     choices = list( 
+            #         "New order" = 1, 
+            #         "Update" = 2
+            #     ) 
+            # ),
             
             tags$div(id = "order_id_top_div"),
             

@@ -5,7 +5,6 @@ server = function(input, output, session) {
     dotenv::load_dot_env("~/.env_data_mart_order_upload")
     main_folder = Sys.getenv("GS_ORDERS_DIR")
     
-    
     # Part I ------------------------------------------------------------ #
     # organize file paths by order
     order_files_paths = get_paths_by_order(main_folder)
@@ -18,6 +17,9 @@ server = function(input, output, session) {
         }
     )
     
+    # fix order_type = 1 (removed option for order_type=2)
+    order_type = 1
+    
     observe({
         if (!is.data.frame(table_front_page)) {
             showNotification(
@@ -26,6 +28,13 @@ server = function(input, output, session) {
                 duration = 5
             )
         }else{
+            sel = table_front_page$prod_date %in% "Unknown"
+            
+            if (sum(sel) > 1) {
+                tmp = table_front_page$merge_date[sel]
+                table_front_page$prod_date[sel] = tmp
+            }
+            
             output$front_table = DT::renderDataTable(DT::datatable({
                 table_front_page
             },
@@ -147,59 +156,60 @@ server = function(input, output, session) {
     merged_sheets_val = reactiveVal()
     
     # 1. submit_order_id
-    observe({
-        if (input$order_type==1) {
+    # observe({
+    #     if (order_type==1) {
             
-            ui = tags$div(
-                id = "order_id_div",
+    #         ui = tags$div(
+    #             id = "order_id_div",
                 
-                textInput( 
-                    "order_id_text", 
-                    "Enter Order ID", 
-                    placeholder = "Enter text...",
-                    width = "100%"
-                ),
+    #             textInput( 
+    #                 "order_id_text", 
+    #                 "Enter Order ID", 
+    #                 placeholder = "Enter text...",
+    #                 width = "100%"
+    #             ),
                 
-                actionButton(inputId = "submit_order_id", 
-                             label = "Submit",
-                             class="btn-warning",
-                             width = "100%")
-            )
+    #             actionButton(inputId = "submit_order_id", 
+    #                          label = "Submit",
+    #                          class="btn-warning",
+    #                          width = "100%")
+    #         )
             
-        }else{
+    #     }else{
             
-            ui = tags$div(
-                id = "order_id_div",
+    #         ui = tags$div(
+    #             id = "order_id_div",
                 
-                selectizeInput( 
-                    "previous_id", 
-                    "Previous Order ID", 
-                    c("None", table_front_page$order_id)
-                ),
+    #             selectizeInput( 
+    #                 "previous_id", 
+    #                 "Previous Order ID", 
+    #                 c("None", table_front_page$order_id)
+    #             ),
                 
-                textInput( 
-                    "order_id_text", 
-                    "Current Order ID", 
-                    placeholder = "Enter text...",
-                    width = "100%"
-                ),
+    #             textInput( 
+    #                 "order_id_text", 
+    #                 "Current Order ID", 
+    #                 placeholder = "Enter text...",
+    #                 width = "100%"
+    #             ),
                 
-                actionButton(inputId = "submit_order_id2", 
-                             label = "Submit",
-                             class="btn-warning",
-                             width = "100%")
-            )
-        }
+    #             actionButton(inputId = "submit_order_id2", 
+    #                          label = "Submit",
+    #                          class="btn-warning",
+    #                          width = "100%")
+    #         )
+    #     }
         
-        removeUI("#order_id_div")
+    #     removeUI("#order_id_div")
         
-        insertUI(
-            "#order_id_top_div",
-            "afterEnd",
-            ui=ui
-        )
+    #     insertUI(
+    #         "#order_id_top_div",
+    #         "afterEnd",
+    #         ui=ui
+    #     )
         
-    }) |> bindEvent(input$order_type)
+    # }) |> bindEvent(order_type)
+
     observe({
         if (nchar(input$order_id_text) <= 1) {
             order_id_checks = FALSE
@@ -215,7 +225,7 @@ server = function(input, output, session) {
             )
         }else{
             check1 = input$order_id_text %in% table_front_page$order_id
-            check2 = input$order_type == 1
+            check2 = order_type == 1
             
             if (check1 & check2) {
                 showNotification(
@@ -226,7 +236,7 @@ server = function(input, output, session) {
             }else{
                 removeUI("#order_id_div")
                 removeUI("#goto_database_div")
-                removeUI("#order_type")
+                # removeUI("#order_type")
                 
                 insertUI(
                     selector = "#current_date",
@@ -343,173 +353,175 @@ server = function(input, output, session) {
         }
         
     }) |> bindEvent(input$submit_order_id)
-    observe({
-        
-        if (input$previous_id=="None") {
-            showNotification(
-                ui = paste("Please select the previous order."),
-                type = "message",
-                duration = 5
-            )
-        }else{
-            
-            if (nchar(input$order_id_text) <= 1) {
-                order_id_checks = FALSE
-            }else{
-                order_id_checks = TRUE
-            }
-            
-            if (!order_id_checks) {
-                showNotification(
-                    ui = paste("Please enter a valid order ID."),
-                    type = "message",
-                    duration = 5
-                )
-            }else{
-                check1 = input$order_id_text %in% table_front_page$order_id
-                if (check1) {
-                    showNotification(
-                        ui = paste("Entered order ID exists."),
-                        type = "message",
-                        duration = 5
-                    )
-                }else{
-                    
-                    oid = input$previous_id
-                    sel_paths = order_files_paths[[oid]]
-                    
-                    ms = read.csv(sel_paths[grep("-merged-sheets.csv$", sel_paths)],
-                                  header = T, check.names = F)
-                    
-                    cms_ = colnames(ms)
-                    cms = cms_[grep("^sequence|^Order ID|^Name", cms_)]
-                    ms_sub = ms[,cms,drop=F]
-                    
-                    colnames(ms_sub)[colnames(ms_sub)=="Name"] = "Protein Name"
-                    clone_strategy_val(ms_sub)
-                    
-                    ms_key = ms[,which(cms_ == "assembly_id"):ncol(ms),drop=F]
-                    metadata_val(ms_key)
-                    
-                    removeUI("#order_id_div")
-                    removeUI("#goto_database_div")
-                    removeUI("#order_type")
-                    
-                    insertUI(
-                        selector = "#current_date",
-                        where = "afterEnd",
-                        ui = tags$div(
-                            id = "order_id_div",
-                            tags$p(paste0("Order ID: ",
-                                          input$order_id_text),
-                                   class="text-secondary"),
-                            tags$p(""),
-                            actionButton(inputId="reset_form", 
-                                         label="Back to Frontpage",
-                                         width="100%",
-                                         disabled=FALSE),
-                            tags$div(id="below_reset_div"),
-                            tags$div(id="below_reset_div1")
-                        )
-                    )
-                    
-                    previous_order_sheet_ui = tags$div(
-                        class="col",
-                        tags$p("Clone strategy",
-                               class="h5 text-primary fw-bold"),
-                        tags$div(
-                            id="previous_order_sheet_div"
-                        ),
-                        tags$p(""),
-                        tags$br(),
-                        tags$div(id="prev_card_bottom_div"),
-                        tags$div(id="prev_card_bottom_div1",
-                             tags$p(paste0(oid, " (Size=", nrow(ms), ")"),
-                                    class="h6 text-secondary")
-                        )
-                    )
-                    
-                    order_summary_sheet_ui = tags$div(
-                        class="col",
-                        tags$p("Order summary",
-                               class="h5 text-primary fw-bold"),
-                        tags$div(
-                            id="order_summary_sheet_div"
-                        ),
-                        fileInput("order_summary_file",
-                                  "Upload order summary sheet",
-                                  width="100%"),
-                        actionButton("order_summary_preproc",
-                                     "Preprocess Order Summary",
-                                     width="100%",
-                                     class="btn-secondary",
-                                     disabled=FALSE),
-                        tags$div(id="order_summary_preproc_bottom_div")
-                    )
-                    
-                    location_map_sheet_ui = tags$div(
-                        class="col",
-                        tags$p("Location map",
-                               class="h5 text-primary fw-bold"),
-                        tags$div(
-                            id="location_map_sheet_div"
-                        ),
-                        fileInput("location_map_file",
-                                  "Upload location map sheet",
-                                  width="100%"),
-                        actionButton("location_map_preproc",
-                                     "Preprocess Location Map",
-                                     width="100%",
-                                     class="btn-secondary",
-                                     disabled=TRUE),
-                        tags$div(id="location_map_preproc_bottom_div")
-                    )
-                    
-                    order_report_sheet_ui = tags$div(
-                        class="col",
-                        tags$div(
-                            id="order_report_sheet_div"
-                        ),
-                        tags$div(
-                            id="order_report_sheet_div1",
-                            tags$p("Order report",
-                                   class="h5 text-primary fw-bold"),
-                            tags$div(
-                                id="order_report_sheet_div"
-                            ),
-                            fileInput("order_report_file",
-                                      "Upload order report pdf",
-                                      width="100%"),
-                            actionButton("order_report_info",
-                                         "Get Report Information",
-                                         class="btn-secondary",
-                                         width="100%",
-                                         disabled=TRUE),
-                            tags$div(id="order_report_info_bottom_div")
-                        ),
-                    )
-                    
-                    ui = tags$div(
-                        id = "main_contents2",
-                        class="row",
-                        previous_order_sheet_ui,
-                        order_summary_sheet_ui,
-                        location_map_sheet_ui,
-                        order_report_sheet_ui
-                    )
-                    
-                    removeUI("#main_contents2")
-                    
-                    insertUI(
-                        selector="#main_contents",
-                        where="afterEnd",
-                        ui=ui
-                    )
-                }
-            }
-        }
-        
-    }) |> bindEvent(input$submit_order_id2)
+    
+    # observe({
+    #     
+    #     if (input$previous_id=="None") {
+    #         showNotification(
+    #             ui = paste("Please select the previous order."),
+    #             type = "message",
+    #             duration = 5
+    #         )
+    #     }else{
+    #         
+    #         if (nchar(input$order_id_text) <= 1) {
+    #             order_id_checks = FALSE
+    #         }else{
+    #             order_id_checks = TRUE
+    #         }
+    #         
+    #         if (!order_id_checks) {
+    #             showNotification(
+    #                 ui = paste("Please enter a valid order ID."),
+    #                 type = "message",
+    #                 duration = 5
+    #             )
+    #         }else{
+    #             check1 = input$order_id_text %in% table_front_page$order_id
+    #             if (check1) {
+    #                 showNotification(
+    #                     ui = paste("Entered order ID exists."),
+    #                     type = "message",
+    #                     duration = 5
+    #                 )
+    #             }else{
+    #                 
+    #                 oid = input$previous_id
+    #                 sel_paths = order_files_paths[[oid]]
+    #                 
+    #                 ms = read.csv(sel_paths[grep("-merged-sheets.csv$", sel_paths)],
+    #                               header = T, check.names = F)
+    #                 
+    #                 cms_ = colnames(ms)
+    #                 cms = cms_[grep("^sequence|^Order ID|^Name", cms_)]
+    #                 ms_sub = ms[,cms,drop=F]
+    #                 
+    #                 colnames(ms_sub)[colnames(ms_sub)=="Name"] = "Protein Name"
+    #                 clone_strategy_val(ms_sub)
+    #                 
+    #                 ms_key = ms[,which(cms_ == "assembly_id"):ncol(ms),drop=F]
+    #                 metadata_val(ms_key)
+    #                 
+    #                 removeUI("#order_id_div")
+    #                 removeUI("#goto_database_div")
+    #                 # removeUI("#order_type")
+    #                 
+    #                 insertUI(
+    #                     selector = "#current_date",
+    #                     where = "afterEnd",
+    #                     ui = tags$div(
+    #                         id = "order_id_div",
+    #                         tags$p(paste0("Order ID: ",
+    #                                       input$order_id_text),
+    #                                class="text-secondary"),
+    #                         tags$p(""),
+    #                         actionButton(inputId="reset_form", 
+    #                                      label="Back to Frontpage",
+    #                                      width="100%",
+    #                                      disabled=FALSE),
+    #                         tags$div(id="below_reset_div"),
+    #                         tags$div(id="below_reset_div1")
+    #                     )
+    #                 )
+    #                 
+    #                 previous_order_sheet_ui = tags$div(
+    #                     class="col",
+    #                     tags$p("Clone strategy",
+    #                            class="h5 text-primary fw-bold"),
+    #                     tags$div(
+    #                         id="previous_order_sheet_div"
+    #                     ),
+    #                     tags$p(""),
+    #                     tags$br(),
+    #                     tags$div(id="prev_card_bottom_div"),
+    #                     tags$div(id="prev_card_bottom_div1",
+    #                          tags$p(paste0(oid, " (Size=", nrow(ms), ")"),
+    #                                 class="h6 text-secondary")
+    #                     )
+    #                 )
+    #                 
+    #                 order_summary_sheet_ui = tags$div(
+    #                     class="col",
+    #                     tags$p("Order summary",
+    #                            class="h5 text-primary fw-bold"),
+    #                     tags$div(
+    #                         id="order_summary_sheet_div"
+    #                     ),
+    #                     fileInput("order_summary_file",
+    #                               "Upload order summary sheet",
+    #                               width="100%"),
+    #                     actionButton("order_summary_preproc",
+    #                                  "Preprocess Order Summary",
+    #                                  width="100%",
+    #                                  class="btn-secondary",
+    #                                  disabled=FALSE),
+    #                     tags$div(id="order_summary_preproc_bottom_div")
+    #                 )
+    #                 
+    #                 location_map_sheet_ui = tags$div(
+    #                     class="col",
+    #                     tags$p("Location map",
+    #                            class="h5 text-primary fw-bold"),
+    #                     tags$div(
+    #                         id="location_map_sheet_div"
+    #                     ),
+    #                     fileInput("location_map_file",
+    #                               "Upload location map sheet",
+    #                               width="100%"),
+    #                     actionButton("location_map_preproc",
+    #                                  "Preprocess Location Map",
+    #                                  width="100%",
+    #                                  class="btn-secondary",
+    #                                  disabled=TRUE),
+    #                     tags$div(id="location_map_preproc_bottom_div")
+    #                 )
+    #                 
+    #                 order_report_sheet_ui = tags$div(
+    #                     class="col",
+    #                     tags$div(
+    #                         id="order_report_sheet_div"
+    #                     ),
+    #                     tags$div(
+    #                         id="order_report_sheet_div1",
+    #                         tags$p("Order report",
+    #                                class="h5 text-primary fw-bold"),
+    #                         tags$div(
+    #                             id="order_report_sheet_div"
+    #                         ),
+    #                         fileInput("order_report_file",
+    #                                   "Upload order report pdf",
+    #                                   width="100%"),
+    #                         actionButton("order_report_info",
+    #                                      "Get Report Information",
+    #                                      class="btn-secondary",
+    #                                      width="100%",
+    #                                      disabled=TRUE),
+    #                         tags$div(id="order_report_info_bottom_div")
+    #                     ),
+    #                 )
+    #                 
+    #                 ui = tags$div(
+    #                     id = "main_contents2",
+    #                     class="row",
+    #                     previous_order_sheet_ui,
+    #                     order_summary_sheet_ui,
+    #                     location_map_sheet_ui,
+    #                     order_report_sheet_ui
+    #                 )
+    #                 
+    #                 removeUI("#main_contents2")
+    #                 
+    #                 insertUI(
+    #                     selector="#main_contents",
+    #                     where="afterEnd",
+    #                     ui=ui
+    #                 )
+    #             }
+    #         }
+    #     }
+    #     
+    # }) |> bindEvent(input$submit_order_id2)
+    
     observe({
         session$reload()
     }) |> bindEvent(input$reset_form)
@@ -678,7 +690,7 @@ server = function(input, output, session) {
                             id1 = clone_strategy_df[,"Protein Name"]
                             id2 = order_summary_df[,"Name"]
                             
-                            if (input$order_type==1) {
+                            if (order_type==1) {
                                 if (!length(id1)==length(id2)) {
                                     id_check = FALSE    
                                 }else{
@@ -690,7 +702,7 @@ server = function(input, output, session) {
                                 } 
                             }
         
-                            if (input$order_type==2) {
+                            if (order_type==2) {
                                 if (!all(id2 %in% id1)) {
                                     id_check = FALSE
                                 }else{
@@ -699,14 +711,14 @@ server = function(input, output, session) {
                             }
                             
                             if (!id_check) {
-                                if (input$order_type==1) {
+                                if (order_type==1) {
                                     showNotification(
                                         ui = "Clone_Strategy 'Protein Name' and Order_Summary 'Name' do not match!",
                                         type = "message",
                                         duration = 5
                                     )
                                 }
-                                if (input$order_type==2) {
+                                if (order_type==2) {
                                     showNotification(
                                         ui = "Order_Summary 'Name' is not contained in Clone_Strategy 'Protein Name'!",
                                         type = "message",
@@ -758,7 +770,7 @@ server = function(input, output, session) {
                                 
                                 order_summary_val(order_summary_df)
                
-                                if (input$order_type==2) {
+                                if (order_type==2) {
                                     rownames(clone_strategy_df) = clone_strategy_df$"Protein Name"
                                     clone_strategy_df = clone_strategy_df[order_summary_df$Name,,drop=F]
                                     clone_strategy_val(clone_strategy_df)
@@ -921,7 +933,7 @@ server = function(input, output, session) {
                                              disabled=FALSE)
                             )
                             
-                            if (input$order_type==1) {
+                            if (order_type==1) {
                                 insertUI(
                                     "#below_reset_div",
                                     "afterEnd",
@@ -1145,7 +1157,7 @@ server = function(input, output, session) {
                              metadata_df[na_assembly_id,"assembly_id_alias"] = tmp
                          }
                          
-                         if (input$order_type==1) {
+                         if (order_type==1) {
                              order_type = "new_order"
                          }else{
                              order_type = "update"
@@ -1205,10 +1217,15 @@ server = function(input, output, session) {
                          for (i in 1:length(hold)) {
                              info = hold[[i]]
                              if (!is.null(info)) {
+                                 
+                                 loc_fl = paste0(main_order_data, "/",
+                                                 gsub(" ", "_", info[,"name"]))
+                                 
+                                 loc_fl = gsub("\\([0-9]+\\)", "", loc_fl)
+                                 
                                  cmd = paste0("cp ",
                                               info[,"datapath"], " ",
-                                              paste0(main_order_data, "/",
-                                                     gsub(" ", "_", info[,"name"])))
+                                              loc_fl)
                                  system(cmd)
                              }
                          }
