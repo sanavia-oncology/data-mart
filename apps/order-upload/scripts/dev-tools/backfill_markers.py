@@ -15,12 +15,12 @@ from dotenv import load_dotenv
 
 from benchling_io import connect
 from genscript_marker import has_marker, marker_parent_id, write_marker
-from genscript_parse import SCHEMAS, build_tubes, read_csv
+from genscript_parse import SCHEMAS, build_tubes, lot_name_has_order, read_csv
 
 
 def _count(page_iter, prefix: str) -> int:
     return sum(1 for page in page_iter for x in page
-               if getattr(x, "archive_record", None) is None and (x.name or "").startswith(prefix))
+               if getattr(x, "archive_record", None) is None and lot_name_has_order(x.name or "", prefix))
 
 
 def main() -> int:

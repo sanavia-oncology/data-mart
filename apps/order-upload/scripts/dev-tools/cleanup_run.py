@@ -30,7 +30,7 @@ from benchling_sdk.models import (
 
 from benchling_io import NET_ERRS, chunked, connect, wait_for_task
 from genscript_marker import archive_marker
-from genscript_parse import SCHEMAS  # single source of truth for schema ids
+from genscript_parse import SCHEMAS, lot_name_has_order  # single source of truth for schema ids
 from genscript_status_cache import set_state
 
 DELETED_PREFIX = "_GENSCRIPT_DELETED_"
@@ -103,12 +103,12 @@ def discover_ids(benchling: Benchling, order_id: str
     links + an "Order ID"-field scan (catches orphans from a failed run)."""
     prefix = order_id.strip()
 
-    print(f"  Lots: schema {SCHEMAS['lot']}, name startswith {prefix!r} ...", flush=True)
+    print(f"  Lots: schema {SCHEMAS['lot']}, name contains {prefix!r} ...", flush=True)
     lot_ids: dict[str, None] = {}
     seq_ids: dict[str, None] = {}
     for lot in _list_all(lambda: benchling.custom_entities.list(
             schema_id=SCHEMAS["lot"], name_includes=prefix), "lots.list"):
-        if not (_active(lot) and (lot.name or "").startswith(prefix)):
+        if not (_active(lot) and lot_name_has_order(lot.name or "", prefix)):
             continue
         lot_ids.setdefault(lot.id, None)
         for sid in _seq_link_ids(lot):
