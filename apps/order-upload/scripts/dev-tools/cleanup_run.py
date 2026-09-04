@@ -152,6 +152,37 @@ def safe_unarchive(unarchive_fn, ids: list[str]) -> None:
         print(f"  (unarchive note: {e})")
 
 
+def _already_archived_id(err) -> str | None:
+    """The id Benchling blames when a batch archive is rejected because one member is
+    already archived, else None. One id is named per response, so callers re-try."""
+    body = getattr(err, "message", None)
+    e = body.get("error") if isinstance(body, dict) else None
+    if not isinstance(e, dict) or "already been archived" not in str(e.get("message", "")):
+        return None
+    return e.get("invalidId")
+
+
+def archive_batches(archive_fn, ids: list[str], kind: str) -> int:
+    """Archive in chunks, dropping any id already archived on the tenant — Benchling
+    rejects the whole batch over one stale member, which used to abort the run."""
+    archived = 0
+    for chunk in chunked(ids, ARCHIVE_CHUNK):
+        batch = list(chunk)
+        while batch:
+            print(f"  archiving {len(batch)} {kind}s ...", flush=True)
+            try:
+                retry(lambda b=list(batch): archive_fn(b), f"{kind}.archive")
+                archived += len(batch)
+                break
+            except _CATCH as e:
+                stale = _already_archived_id(e)
+                if stale is None or stale not in batch:
+                    raise
+                print(f"  skipping {stale} — already archived", flush=True)
+                batch = [i for i in batch if i != stale]
+    return archived
+
+
 def archive_only(benchling: Benchling, ids: list[str], kind: str) -> int:
     """Archive storage objects (containers, boxes). No rename needed — they aren't
     registry entities, so their names aren't reserved."""
@@ -170,10 +201,7 @@ def archive_only(benchling: Benchling, ids: list[str], kind: str) -> int:
     else:
         raise ValueError(f"unknown kind: {kind}")
     safe_unarchive(unarchive_fn, ids)
-    for batch in chunked(ids, ARCHIVE_CHUNK):
-        print(f"  archiving {len(batch)} {kind}s ...", flush=True)
-        retry(lambda b=batch: archive_one(b), f"{kind}.archive")
-    return len(ids)
+    return archive_batches(archive_one, ids, kind)
 
 
 def rename_and_archive(benchling: Benchling, ids: list[str], kind: str,
@@ -234,9 +262,7 @@ def rename_and_archive(benchling: Benchling, ids: list[str], kind: str,
                 print(f"  WARN: rename failed for {eid}: {e}", flush=True)
 
     if done:
-        for batch in chunked(ids, ARCHIVE_CHUNK):
-            print(f"  archiving {len(batch)} {kind}s ...", flush=True)
-            retry(lambda b=batch: archive_batch(b), f"{kind}.archive")
+        archive_batches(archive_batch, ids, kind)
     return done
 
 
