@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 
 from benchling_io import connect
 from genscript_marker import list_markers
-from genscript_parse import SCHEMAS
+from genscript_parse import SCHEMAS, lot_name_has_order
 from genscript_status_cache import entry, write_states
 
 
@@ -29,7 +29,7 @@ def has_any_lot(benchling, prefix: str) -> bool:
     not a full count."""
     for page in benchling.custom_entities.list(schema_id=SCHEMAS["lot"], name_includes=prefix):
         for lot in page:
-            if getattr(lot, "archive_record", None) is None and (lot.name or "").startswith(prefix):
+            if getattr(lot, "archive_record", None) is None and lot_name_has_order(lot.name or "", prefix):
                 return True
     return False
 

@@ -26,10 +26,12 @@ py_status <- function(ids, cfg) {
     tryCatch(jsonlite::fromJSON(res$stdout, simplifyVector = FALSE), error = function(e) list())
 }
 
-# Background spawn, JSON to a temp file — keeps Benchling round-trips off the UI thread.
-# Caller polls proc$is_alive() and parses outfile once it exits.
+# Background spawn, JSON to a scratch file under logs/ — keeps Benchling round-trips off the UI
+# thread. Not tempdir(): macOS purges idle /var/folders entries, and a session that outlives its
+# tempdir would fail every launch. Caller polls proc$is_alive() and parses outfile once it exits.
 .py_async <- function(args, cfg) {
-    outfile <- tempfile(fileext = ".json")
+    dir.create(cfg$logs_dir, showWarnings = FALSE, recursive = TRUE)
+    outfile <- tempfile("py-", tmpdir = cfg$logs_dir, fileext = ".json")
     list(proc = processx::process$new(cfg$py, args, wd = cfg$app_dir, env = .penv(cfg),
                                       stdout = outfile, stderr = "|"),
          outfile = outfile)

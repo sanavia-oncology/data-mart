@@ -30,7 +30,7 @@ from benchling_sdk.models import (
 
 from benchling_io import NET_ERRS, chunked, connect, wait_for_task
 from genscript_marker import archive_marker
-from genscript_parse import SCHEMAS  # single source of truth for schema ids
+from genscript_parse import SCHEMAS, lot_name_has_order  # single source of truth for schema ids
 from genscript_status_cache import set_state
 
 DELETED_PREFIX = "_GENSCRIPT_DELETED_"
@@ -103,12 +103,12 @@ def discover_ids(benchling: Benchling, order_id: str
     links + an "Order ID"-field scan (catches orphans from a failed run)."""
     prefix = order_id.strip()
 
-    print(f"  Lots: schema {SCHEMAS['lot']}, name startswith {prefix!r} ...", flush=True)
+    print(f"  Lots: schema {SCHEMAS['lot']}, name contains {prefix!r} ...", flush=True)
     lot_ids: dict[str, None] = {}
     seq_ids: dict[str, None] = {}
     for lot in _list_all(lambda: benchling.custom_entities.list(
             schema_id=SCHEMAS["lot"], name_includes=prefix), "lots.list"):
-        if not (_active(lot) and (lot.name or "").startswith(prefix)):
+        if not (_active(lot) and lot_name_has_order(lot.name or "", prefix)):
             continue
         lot_ids.setdefault(lot.id, None)
         for sid in _seq_link_ids(lot):
@@ -130,11 +130,11 @@ def discover_ids(benchling: Benchling, order_id: str
         if _active(box) and (box.name or "").startswith(prefix):
             box_ids.setdefault(box.id, None)
 
-    print(f"  Containers: name startswith {prefix!r} ...", flush=True)
+    print(f"  Containers: name contains {prefix!r} ...", flush=True)
     container_ids: dict[str, None] = {}
     for c in _list_all(lambda: benchling.containers.list(
             schema_id=SCHEMAS["container"], name_includes=prefix), "containers.list"):
-        if _active(c) and (c.name or "").startswith(prefix):
+        if _active(c) and lot_name_has_order(c.name or "", prefix):
             container_ids.setdefault(c.id, None)
 
     print(f"  discovered: {len(container_ids)} containers, {len(box_ids)} boxes, "
@@ -150,6 +150,37 @@ def safe_unarchive(unarchive_fn, ids: list[str]) -> None:
         unarchive_fn(ids)
     except _CATCH as e:
         print(f"  (unarchive note: {e})")
+
+
+def _already_archived_id(err) -> str | None:
+    """The id Benchling blames when a batch archive is rejected because one member is
+    already archived, else None. One id is named per response, so callers re-try."""
+    body = getattr(err, "message", None)
+    e = body.get("error") if isinstance(body, dict) else None
+    if not isinstance(e, dict) or "already been archived" not in str(e.get("message", "")):
+        return None
+    return e.get("invalidId")
+
+
+def archive_batches(archive_fn, ids: list[str], kind: str) -> int:
+    """Archive in chunks, dropping any id already archived on the tenant — Benchling
+    rejects the whole batch over one stale member, which used to abort the run."""
+    archived = 0
+    for chunk in chunked(ids, ARCHIVE_CHUNK):
+        batch = list(chunk)
+        while batch:
+            print(f"  archiving {len(batch)} {kind}s ...", flush=True)
+            try:
+                retry(lambda b=list(batch): archive_fn(b), f"{kind}.archive")
+                archived += len(batch)
+                break
+            except _CATCH as e:
+                stale = _already_archived_id(e)
+                if stale is None or stale not in batch:
+                    raise
+                print(f"  skipping {stale} — already archived", flush=True)
+                batch = [i for i in batch if i != stale]
+    return archived
 
 
 def archive_only(benchling: Benchling, ids: list[str], kind: str) -> int:
@@ -170,10 +201,7 @@ def archive_only(benchling: Benchling, ids: list[str], kind: str) -> int:
     else:
         raise ValueError(f"unknown kind: {kind}")
     safe_unarchive(unarchive_fn, ids)
-    for batch in chunked(ids, ARCHIVE_CHUNK):
-        print(f"  archiving {len(batch)} {kind}s ...", flush=True)
-        retry(lambda b=batch: archive_one(b), f"{kind}.archive")
-    return len(ids)
+    return archive_batches(archive_one, ids, kind)
 
 
 def rename_and_archive(benchling: Benchling, ids: list[str], kind: str,
@@ -234,9 +262,7 @@ def rename_and_archive(benchling: Benchling, ids: list[str], kind: str,
                 print(f"  WARN: rename failed for {eid}: {e}", flush=True)
 
     if done:
-        for batch in chunked(ids, ARCHIVE_CHUNK):
-            print(f"  archiving {len(batch)} {kind}s ...", flush=True)
-            retry(lambda b=batch: archive_batch(b), f"{kind}.archive")
+        archive_batches(archive_batch, ids, kind)
     return done
 
 

@@ -23,6 +23,7 @@ server <- function(input, output, session) {
     result_rv    <- reactiveVal(NULL)           # last finished run: list(kind, ok, order, logfile)
     status_busy  <- reactiveVal(FALSE)          # TRUE while the async Benchling sync runs
     sync_ok      <- reactiveVal(TRUE)   # FALSE after a failed sync: the cache can't prove upload state
+    sync_fail    <- reactiveVal(NULL)   # why, in words the sidebar can show; NULL while sync_ok
     run_rv       <- reactiveValues(running = FALSE, order = NULL, kind = NULL, started = NULL, location = NULL)
     current_proc <- NULL   # plain var: must survive the poll's invalidations
     status_proc  <- NULL   # plain var: the async status-sync process, as list(proc, outfile)
@@ -41,9 +42,24 @@ server <- function(input, output, session) {
         path
     }
 
+    # A launch that throws never ran python, let alone reached Benchling. processx chains the real
+    # reason behind a generic one; the last "!" line is the one naming the path or package.
+    launch_error <- function(what, e) {
+        full  <- conditionMessage(e)
+        lines <- trimws(strsplit(full, "\n", fixed = TRUE)[[1]])
+        short <- utils::tail(sub("^! ", "", grep("^! ", lines, value = TRUE)), 1)
+        if (!length(short)) short <- gsub("\\s+", " ", full)
+        short <- sub(" @\\S+ \\(\\w+\\)$", "", short)
+        write_error_log("launch", what, c(paste("launch failed:", what), full))
+        showNotification(sprintf("Could not start the %s — python never ran. %s", what, short),
+                         type = "error", duration = 15)
+        short
+    }
+
     # Backgrounded: fetching these inline held up the session function, and so the first paint.
     locations_rv <- reactiveVal(NULL)
-    if (!embed) loc_proc <- tryCatch(py_locations_async(ecfg()), error = function(e) NULL)
+    if (!embed) loc_proc <- tryCatch(py_locations_async(ecfg()),
+                                     error = function(e) { launch_error("location list", e); NULL })
     observe({
         lp <- loc_proc
         if (is.null(lp)) return()
@@ -75,12 +91,9 @@ server <- function(input, output, session) {
             status_proc <<- NULL
         }
         if (!length(ids)) { status_busy(FALSE); return() }
-        status_proc <<- tryCatch(py_status_async(ids, ecfg()), error = function(e) NULL)
-        if (is.null(status_proc)) {
-            showNotification("Could not start the Benchling check — is the python env built?",
-                             type = "error", duration = 12)
-            sync_ok(FALSE)
-        }
+        status_proc <<- tryCatch(py_status_async(ids, ecfg()),
+                                 error = function(e) { sync_fail(launch_error("Benchling check", e)); NULL })
+        if (is.null(status_proc)) sync_ok(FALSE)
         status_busy(!is.null(status_proc))
     }
 
@@ -159,11 +172,12 @@ server <- function(input, output, session) {
         status_proc <<- NULL
         if (identical(code, 0L) && length(st)) {
             apply_states(st)
-            sync_ok(TRUE)
+            sync_ok(TRUE); sync_fail(NULL)
         } else {
-            showNotification(sync_error_msg(code, err), type = "error", duration = 15)
+            msg <- sync_error_msg(code, err)
+            showNotification(msg, type = "error", duration = 15)
             if (length(err)) write_error_log("status", NULL, err)
-            sync_ok(FALSE)
+            sync_ok(FALSE); sync_fail(msg)
         }
         status_busy(FALSE)
     })
@@ -193,8 +207,8 @@ server <- function(input, output, session) {
                 tags$p(sprintf("%d order%s found", nrow(df), if (nrow(df) == 1L) "" else "s"),
                        style = "margin: 0; font-size: 13px;"),
                 # Outlives the error toast, so the blank column is never left unexplained.
-                tags$p("Benchling unreachable — upload status unavailable.", class = "text-danger",
-                       style = "margin: 0; font-size: 13px;")))
+                tags$p(paste("Upload status unavailable —", sync_fail() %||% "the Benchling check failed."),
+                       class = "text-danger", style = "margin: 0; font-size: 13px;")))
         tagList(
             tags$p(sprintf("%d order%s found", nrow(df), if (nrow(df) == 1L) "" else "s"), style = "margin: 0; font-size: 13px;"),
             tags$p(sprintf("%d already in Benchling", n_up), class = "text-secondary", style = "margin: 0; font-size: 13px;"),

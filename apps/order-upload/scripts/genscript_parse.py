@@ -136,6 +136,27 @@ def seq_name_for(row, n: int) -> str:
     return f"{row['Name']}_seq{n}"
 
 
+# Spaced: lot numbers carry their own hyphens ("U905XMYNG0-1/P49LC001").
+LOT_NAME_SEP = " - "
+
+
+def lot_name_for(row) -> str:
+    """Lot display name "<assembly alias> - <lot no>". The alias columns are optional,
+    so fall back to the raw assembly id, then to the lot number alone."""
+    for col in ("assembly_id_alias", "assembly_id"):
+        alias = "" if col not in row.index or pd.isna(row[col]) else str(row[col]).strip()
+        if alias:
+            return f"{alias}{LOT_NAME_SEP}{row['Lot No']}"
+    return row["Lot No"]
+
+
+def lot_name_has_order(name: str, prefix: str) -> bool:
+    """Does a lot/container name belong to order `prefix`? The order id sits at the
+    front of the name, or right after the alias separator. Anchored, not a bare
+    substring — cleanup_run archives whatever this matches."""
+    return name.startswith(prefix) or f"{LOT_NAME_SEP}{prefix}" in name
+
+
 def box_key(tube: dict) -> tuple:
     """(box, type, merge) — identifies and dedups a box."""
     return (tube["box"], tube["btype"], tube["merge"])
@@ -309,7 +330,7 @@ def build_lot_payloads(df: pd.DataFrame, registry_id: str, sequence_ids: list[st
                        offsets: list[int], tubes_by_row: list[list[dict]]) -> list:
     return [
         CustomEntityBulkCreate(
-            name=row["Lot No"],
+            name=lot_name_for(row),
             registry_id=registry_id,
             schema_id=SCHEMAS["lot"],
             naming_strategy=NamingStrategy.NEW_IDS,
@@ -343,7 +364,7 @@ def build_container_payloads(flat: list[tuple[int, dict]], df: pd.DataFrame,
                              box_id_by_key: dict, container_type_id: str) -> list:
     return [
         ContainerCreate(
-            name=df.iloc[i]["Lot No"],
+            name=lot_name_for(df.iloc[i]),
             schema_id=SCHEMAS["container"],
             parent_storage_id=f"{box_id_by_key[box_key(t)]}:{t['pos']}",
             fields=make_fields({"LL1": "", "LL2": "", "Type": container_type_id}),
