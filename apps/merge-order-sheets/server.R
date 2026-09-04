@@ -18,6 +18,7 @@ server = function(input, output, session) {
     )
     
     # fix order_type = 1 (removed option for order_type=2)
+    # need to remove hanging code at some point
     order_type = 1
     
     observe({
