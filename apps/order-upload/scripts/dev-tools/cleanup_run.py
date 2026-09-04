@@ -130,11 +130,11 @@ def discover_ids(benchling: Benchling, order_id: str
         if _active(box) and (box.name or "").startswith(prefix):
             box_ids.setdefault(box.id, None)
 
-    print(f"  Containers: name startswith {prefix!r} ...", flush=True)
+    print(f"  Containers: name contains {prefix!r} ...", flush=True)
     container_ids: dict[str, None] = {}
     for c in _list_all(lambda: benchling.containers.list(
             schema_id=SCHEMAS["container"], name_includes=prefix), "containers.list"):
-        if _active(c) and (c.name or "").startswith(prefix):
+        if _active(c) and lot_name_has_order(c.name or "", prefix):
             container_ids.setdefault(c.id, None)
 
     print(f"  discovered: {len(container_ids)} containers, {len(box_ids)} boxes, "

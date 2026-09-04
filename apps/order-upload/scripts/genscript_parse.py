@@ -364,7 +364,7 @@ def build_container_payloads(flat: list[tuple[int, dict]], df: pd.DataFrame,
                              box_id_by_key: dict, container_type_id: str) -> list:
     return [
         ContainerCreate(
-            name=df.iloc[i]["Lot No"],
+            name=lot_name_for(df.iloc[i]),
             schema_id=SCHEMAS["container"],
             parent_storage_id=f"{box_id_by_key[box_key(t)]}:{t['pos']}",
             fields=make_fields({"LL1": "", "LL2": "", "Type": container_type_id}),
