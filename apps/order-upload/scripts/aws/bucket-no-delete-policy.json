@@ -1,0 +1,19 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "NoObjectDeletesUnderGenscriptOrders",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": ["s3:DeleteObject", "s3:DeleteObjectVersion"],
+      "Resource": "arn:aws:s3:::sanavia-experiment-raw-data/genscript-orders/*"
+    },
+    {
+      "Sid": "KeepBucketAndVersionHistory",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": ["s3:DeleteBucket", "s3:PutBucketVersioning", "s3:PutLifecycleConfiguration"],
+      "Resource": "arn:aws:s3:::sanavia-experiment-raw-data"
+    }
+  ]
+}

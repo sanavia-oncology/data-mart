@@ -13,7 +13,10 @@ from dotenv import load_dotenv
 from benchling_io import connect, log
 from genscript_marker import write_marker
 from genscript_parse import (
+    ASSEMBLY_TYPE_FIELD,
+    ASSEMBLY_TYPE_SCHEMAS,
     CONTAINER_TYPE,
+    SCHEMAS,
     build_box_payloads,
     build_container_payloads,
     build_lot_payloads,
@@ -23,10 +26,18 @@ from genscript_parse import (
     flatten,
     read_csv,
     seq_offsets,
+    validate_assembly_types,
     validate_tubes,
 )
 from genscript_status_cache import set_state
-from genscript_upload import create_boxes, entity_field, resolve_dropdown, run_bulk
+from genscript_upload import (
+    assert_entity_link,
+    create_boxes,
+    entity_field,
+    resolve_assembly_types,
+    resolve_dropdown,
+    run_bulk,
+)
 
 BATCH_SIZE_DEFAULT = 100  # Benchling caps bulk_create / transfer at 100 per request.
 
@@ -37,7 +48,8 @@ def _rows(*keys):
 
 
 def upload(benchling, df, tubes_by_row: list[list[dict]], registry_id: str,
-           location_id: str, container_type_id: str, chunk_size: int) -> int:
+           location_id: str, container_type_id: str, chunk_size: int,
+           assembly_type_ids: dict) -> int:
     """Build then push each of the 5 phases; `stage` tags which one failed on error.
     Recover a failed run with `scripts/dev-tools/cleanup_run.py --order-id`."""
     flat = flatten(tubes_by_row)
@@ -57,7 +69,8 @@ def upload(benchling, df, tubes_by_row: list[list[dict]], registry_id: str,
         sequence_ids = [entity_field(e, "id") for e in seq_entries]
 
         log(stage := "LOCAL_BUILD", f"building {n_rows} lot payload(s) ...")
-        lot_payloads = build_lot_payloads(df, registry_id, sequence_ids, offsets, tubes_by_row)
+        lot_payloads = build_lot_payloads(df, registry_id, sequence_ids, offsets,
+                                          tubes_by_row, assembly_type_ids)
         log(stage := "BENCHLING_PUSH", f"creating {n_rows} GenScript Lot entities "
             f"(chunks of {chunk_size}) ...")
         lot_entries = run_bulk(benchling, lot_payloads, "lots", chunk_size,
@@ -131,8 +144,13 @@ def main() -> int:
     container_type_id = resolve_dropdown(benchling, "Container Type", CONTAINER_TYPE)
     log("BENCHLING_PUSH", f"container type {CONTAINER_TYPE!r} -> {container_type_id}")
 
+    assert_entity_link(benchling, SCHEMAS["lot"], ASSEMBLY_TYPE_FIELD)
+    assembly_type_ids = resolve_assembly_types(benchling, ASSEMBLY_TYPE_SCHEMAS[args.env])
+    validate_assembly_types(df, assembly_type_ids)
+    log("BENCHLING_PUSH", f"resolved {len(assembly_type_ids)} Assembly Type Construct entities")
+
     rc = upload(benchling, df, tubes_by_row, registry_id, args.location,
-                container_type_id, args.batch_size)
+                container_type_id, args.batch_size, assembly_type_ids)
 
     # Final step of a successful push: stamp the completion marker. Status keys off this, so it
     # must be last — a failure in any earlier phase raises above and never reaches here. A marker

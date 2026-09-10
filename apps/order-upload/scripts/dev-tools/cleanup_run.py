@@ -104,13 +104,13 @@ def discover_ids(benchling: Benchling, order_id: str
     prefix = order_id.strip()
 
     print(f"  Lots: schema {SCHEMAS['lot']}, name contains {prefix!r} ...", flush=True)
-    lot_ids: dict[str, None] = {}
+    lot_ids: dict[str, str] = {}
     seq_ids: dict[str, None] = {}
     for lot in _list_all(lambda: benchling.custom_entities.list(
             schema_id=SCHEMAS["lot"], name_includes=prefix), "lots.list"):
         if not (_active(lot) and lot_name_has_order(lot.name or "", prefix)):
             continue
-        lot_ids.setdefault(lot.id, None)
+        lot_ids.setdefault(lot.id, lot.name or "")
         for sid in _seq_link_ids(lot):
             seq_ids.setdefault(sid, None)
 
@@ -125,20 +125,25 @@ def discover_ids(benchling: Benchling, order_id: str
             seq_ids.setdefault(seq.id, None)
 
     print(f"  Boxes: name startswith {prefix!r} ...", flush=True)
-    box_ids: dict[str, None] = {}
+    box_ids: dict[str, str] = {}
     for box in _list_all(lambda: benchling.boxes.list(name_includes=prefix), "boxes.list"):
         if _active(box) and (box.name or "").startswith(prefix):
-            box_ids.setdefault(box.id, None)
+            box_ids.setdefault(box.id, box.name or "")
 
     print(f"  Containers: name contains {prefix!r} ...", flush=True)
-    container_ids: dict[str, None] = {}
+    container_ids: dict[str, str] = {}
     for c in _list_all(lambda: benchling.containers.list(
             schema_id=SCHEMAS["container"], name_includes=prefix), "containers.list"):
         if _active(c) and lot_name_has_order(c.name or "", prefix):
-            container_ids.setdefault(c.id, None)
+            container_ids.setdefault(c.id, c.name or "")
 
     print(f"  discovered: {len(container_ids)} containers, {len(box_ids)} boxes, "
           f"{len(lot_ids)} lots, {len(seq_ids)} sequences")
+    # The app always passes --yes, so this listing is the only record of what was hit.
+    for label, named in (("containers", container_ids), ("boxes", box_ids), ("lots", lot_ids)):
+        if named:
+            shown = [v for v in named.values() if v][:3]
+            print(f"    {label}: " + "; ".join(shown) + (" ..." if len(named) > 3 else ""))
     return (list(seq_ids), list(lot_ids), list(container_ids), list(box_ids))
 
 
@@ -278,6 +283,8 @@ def parse_args(argv=None) -> argparse.Namespace:
                    help="Tenant to clean up in.")
     p.add_argument("--yes", action="store_true",
                    help="Skip the confirmation prompt.")
+    p.add_argument("--dry-run", action="store_true",
+                   help="Print what would be archived and exit without changing anything.")
     return p.parse_args(argv)
 
 
@@ -305,6 +312,10 @@ def main() -> int:
     print(f"  Boxes:               {len(box_ids)}")
     print(f"  GenScript Lots:      {len(lot_ids)}")
     print(f"  GenScript Sequences: {len(seq_ids)}")
+
+    if args.dry_run:
+        print("\n--dry-run: nothing archived.")
+        return 0
 
     if not args.yes:
         confirm = input(f"\nArchive these {total} items in {args.env}? [y/N] ").strip().lower()

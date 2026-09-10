@@ -25,6 +25,30 @@ def resolve_dropdown(benchling: Benchling, dropdown_name: str, option_name: str)
     sys.exit(f"[BENCHLING_PUSH] ERROR: dropdown {dropdown_name!r} not found")
 
 
+def assert_entity_link(benchling: Benchling, schema_id: str, field_name: str) -> None:
+    """Refuse to run against an unconverted field — Benchling would take the entity ids as
+    plain text. Read `.value`; the SDK enum stringifies entity_link as _UNKNOWN."""
+    schema = benchling.schemas.get_entity_schema_by_id(schema_id)
+    for f in schema.field_definitions:
+        if getattr(f, "name", None) == field_name:
+            found = getattr(getattr(f, "type", None), "value", "") or "?"
+            if found != "entity_link":
+                sys.exit(f"[BENCHLING_PUSH] ERROR: field {field_name!r} is {found!r}, not "
+                         f"entity_link — convert it in Benchling before uploading")
+            return
+    sys.exit(f"[BENCHLING_PUSH] ERROR: no field {field_name!r} on schema {schema_id}")
+
+
+def resolve_assembly_types(benchling: Benchling, schema_id: str) -> dict:
+    """{name: id} for the Assembly Type Construct entities. Keyed on name — registry ids
+    are off-by-one from the AT codes and scrambled on test."""
+    out: dict = {}
+    for page in benchling.custom_entities.list(schema_id=schema_id):
+        for e in page:
+            out[e.name] = e.id
+    return out
+
+
 def create_boxes(benchling: Benchling, box_payloads: list) -> dict:
     """Create each pre-built [(box_key, BoxCreate)] -> {box_key: box_id}."""
     out: dict = {}

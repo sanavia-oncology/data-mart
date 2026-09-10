@@ -30,6 +30,14 @@ SCHEMAS = {
     "container": "consch_bSrmOjEq",
 }
 
+# Built separately on each tenant, not cloned, so the ids differ.
+ASSEMBLY_TYPE_SCHEMAS = {
+    "test": "ts_DHmKTU0reB",
+    "prod": "ts_TiiMdLojtS",
+}
+
+ASSEMBLY_TYPE_FIELD = "Assembly type"
+
 # Box schema per GenScript "Box Type"; an unknown type is rejected in validate_tubes.
 BOX_SCHEMAS = {
     "9x9": "boxsch_rWBXv6rL",
@@ -151,10 +159,12 @@ def lot_name_for(row) -> str:
 
 
 def lot_name_has_order(name: str, prefix: str) -> bool:
-    """Does a lot/container name belong to order `prefix`? The order id sits at the
-    front of the name, or right after the alias separator. Anchored, not a bare
-    substring — cleanup_run archives whatever this matches."""
-    return name.startswith(prefix) or f"{LOT_NAME_SEP}{prefix}" in name
+    """Does a lot/container name belong to order `prefix`? Names are
+    "[<alias><sep>]<order id>-<n>/<lot>"; `sep` was a bare "-" before 07f5820 and " - "
+    after, so accept either boundary. The "-<n>" suffix is required — a bare substring
+    would also match other apps' containers, which share the container schema, and
+    cleanup_run archives whatever this returns True for."""
+    return re.search(rf"(?:^|[-\s]){re.escape(prefix)}-\d+(?:/|$)", name) is not None
 
 
 def box_key(tube: dict) -> tuple:
@@ -166,7 +176,8 @@ def box_full_name(tube: dict, order_id_prefix: str) -> str:
     return f"{order_id_prefix} {tube['box']}_{tube['btype']}_{tube['merge']}"
 
 
-def lot_fields_for(row, seq_ids: list, tubes: list[dict]) -> dict:
+def lot_fields_for(row, seq_ids: list, tubes: list[dict],
+                   assembly_type_ids: dict) -> dict:
     """LOT_FIELDS (present columns) + Supplier + derived count/volume + seq links.
     Box/position live on the containers, not the lot."""
     out = {b: tx(row[csv]) for csv, b, tx, _ in LOT_FIELDS if csv in row.index}
@@ -176,6 +187,8 @@ def lot_fields_for(row, seq_ids: list, tubes: list[dict]) -> dict:
         sum(float(t["vol"]) for t in tubes if t["vol"] not in (None, "")), 4)
     for i, sid in enumerate(seq_ids, start=1):
         out[f"Sequence{i}"] = sid  # None dropped by make_fields()
+    code = out.get(ASSEMBLY_TYPE_FIELD)
+    out[ASSEMBLY_TYPE_FIELD] = assembly_type_ids[code] if code else None
     return out
 
 
@@ -278,6 +291,18 @@ def validate_tubes(tubes_by_row: list[list[dict]]) -> None:
         sys.exit("[LOCAL_PARSE] ERROR: tube validation failed:\n  - " + "\n  - ".join(problems))
 
 
+def validate_assembly_types(df: pd.DataFrame, assembly_type_ids: dict) -> None:
+    """Fail before any write if a CSV AT code has no entity on the tenant."""
+    if "assembly_type" not in df.columns:
+        return
+    codes = {c for c in df["assembly_type"].fillna("").astype(str).str.strip() if c}
+    unknown = sorted(codes - assembly_type_ids.keys())
+    if unknown:
+        sys.exit(f"[LOCAL_PARSE] ERROR: assembly type(s) with no Assembly Type Construct "
+                 f"entity on the tenant: {unknown} "
+                 f"(known: {sorted(assembly_type_ids)})")
+
+
 def build_sequence_payloads(df: pd.DataFrame, registry_id: str) -> tuple[list, list[int]]:
     """(flat payloads in row-major order, per-row seq counts). Each row yields 2..4
     payloads; a missing/empty `sequence N` column ends the row."""
@@ -327,7 +352,8 @@ def row_seq_ids(sequence_ids: list[str], offsets: list[int], i: int) -> list:
 
 
 def build_lot_payloads(df: pd.DataFrame, registry_id: str, sequence_ids: list[str],
-                       offsets: list[int], tubes_by_row: list[list[dict]]) -> list:
+                       offsets: list[int], tubes_by_row: list[list[dict]],
+                       assembly_type_ids: dict) -> list:
     return [
         CustomEntityBulkCreate(
             name=lot_name_for(row),
@@ -335,7 +361,8 @@ def build_lot_payloads(df: pd.DataFrame, registry_id: str, sequence_ids: list[st
             schema_id=SCHEMAS["lot"],
             naming_strategy=NamingStrategy.NEW_IDS,
             fields=make_fields(lot_fields_for(
-                row, row_seq_ids(sequence_ids, offsets, i), tubes_by_row[i])),
+                row, row_seq_ids(sequence_ids, offsets, i), tubes_by_row[i],
+                assembly_type_ids)),
         )
         for i, row in df.iterrows()
     ]
