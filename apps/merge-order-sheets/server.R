@@ -107,10 +107,36 @@ server = function(input, output, session) {
         oid = table_front_page[sel, "order_id"]
         sel_paths = order_files_paths[[oid]]
         
-        ms = read.csv(sel_paths[grep("-merged-sheets.csv$", sel_paths)],
-                      header = T, check.names = F)
+        hold = list()
 
-        ms_val(ms)
+        # 1. engineering sheets
+        engineering_sheets_p = sel_paths[grep("engineering_sheets", sel_paths)]
+        if (length(engineering_sheets_p)) {
+            for (i in engineering_sheets_p) {
+                i_ = sapply(strsplit(i, "/"), function(x) x[length(x)])
+                i_ = paste0(oid, "_", i_)
+                hold[[i_]] = read.csv(i, header = T, check.names = F)
+            }
+        }
+        
+        # 2. merged sheets 
+        mosp = sel_paths[grep("-merged-sheets.csv$", sel_paths)]
+        mosp_ = sapply(strsplit(mosp, "/"), function(x) x[length(x)])
+        mosp_ = gsub("-merged-sheets.csv", "_merged-sheets.csv", mosp_)
+        ms = read.csv(mosp, header = T, check.names = F)
+        hold[[mosp_]] = ms
+        
+        # 3. download info.
+        info = Sys.info()
+        si = data.frame(user=info["user"],
+                        nodename=info["nodename"],
+                        sysname=info["sysname"])
+          
+        si = cbind(si, table_front_page[sel,,drop=F])
+        sin = paste0(oid, "_", Sys.Date(), "_download-info.csv")
+        hold[[sin]] = si
+        
+        ms_val(hold)
         ms_val2(oid)
         
         output$plot = renderPlot( { 
@@ -131,7 +157,7 @@ server = function(input, output, session) {
             "afterEnd",
             ui = ui
         )
-    
+        
     }) |> bindEvent(input$front_table_rows_selected)
 
     # download_order_sheets download handler
@@ -142,14 +168,29 @@ server = function(input, output, session) {
             }else{
                 tmp = ms_val2()
             }
-            paste0(tmp, "_", Sys.Date(), "_merged-order-sheets.csv")
+            paste0(tmp, "_", Sys.Date(), "_merged-order-sheets.zip")
         },
         content = function(file) {
-            res = ms_val()
-            write.csv(res,
-                      file, row.names = FALSE)
-        }
+            temp_dir = tempdir()
+            
+            RES = ms_val()
+            files_to_zip = names(RES)
+            full_paths = file.path(temp_dir, files_to_zip)
+            
+            for (j in 1:length(files_to_zip)) {
+                write.csv(RES[[j]], file=full_paths[j], row.names=FALSE)    
+            }
+    
+            # zip() records whatever paths you give it, so cd into temp_dir
+            # first so the archive doesn't include the full absolute path
+            old_wd = setwd(temp_dir)
+            on.exit(setwd(old_wd))
+            
+            zip::zip(zipfile=file, files=files_to_zip)
+        },
+        contentType = "application/zip"
     )
+    
     
     
     # Part II ----------------------------------------------------------- #
