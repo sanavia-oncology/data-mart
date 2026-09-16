@@ -47,9 +47,6 @@ front_page_table = function(merged_sheets_list){
     
     n_mol = sapply(merged_sheets_list, nrow)
     
-    order_type = sapply(merged_sheets_list, 
-                        function(x) x[["order_type"]][1])
-    
     assembly_type = sapply(merged_sheets_list,
                            function(x) paste0(sort(unique(x[["assembly_type"]])),
                                               collapse = "|"))
@@ -60,7 +57,6 @@ front_page_table = function(merged_sheets_list){
     df = data.frame("merge_date"=mdate,
                     "order_id"=oid,
                     "size"=n_mol,
-                    "type"=order_type,
                     "prod_date"=gdate,
                     "assembly_type"=assembly_type,
                     check.names = F)
@@ -75,6 +71,7 @@ front_page_table = function(merged_sheets_list){
 make_front_page_table = function(order_files_paths) {
     # read in all merged_sheet.csv
     merged_sheets_list = list()
+    has_eng_sheets = list()
     
     for (order_folder in names(order_files_paths)) {
         fls = order_files_paths[[order_folder]]
@@ -103,9 +100,13 @@ make_front_page_table = function(order_files_paths) {
         }
         
         merged_sheets_list[[order_folder]] = dat
+        
+        has_eng_sheets[[order_folder]] = length(grep("engineering_sheets", fls))
     }
-    
+
     table_front_page = front_page_table(merged_sheets_list)
+    has_eng_sheets_ = unlist(has_eng_sheets)
+    table_front_page$design_sheets = has_eng_sheets_[table_front_page$order_id]
     
     return(table_front_page)
 }

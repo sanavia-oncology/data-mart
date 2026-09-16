@@ -7,7 +7,14 @@ server = function(input, output, session) {
     
     # Part I ------------------------------------------------------------ #
     # organize file paths by order
-    order_files_paths = get_paths_by_order(main_folder)
+
+    order_files_paths = tryCatch(
+        get_paths_by_order(main_folder),
+        error = function(e) {
+            error_msg = "'order_files_paths()' an error occurred."
+            return(error_msg)
+        }
+    )
     
     table_front_page = tryCatch(
         make_front_page_table(order_files_paths),
@@ -16,10 +23,6 @@ server = function(input, output, session) {
             return(error_msg)
         }
     )
-    
-    # fix order_type = 1 (removed option for order_type=2)
-    # need to remove hanging code at some point
-    order_type = 1
     
     observe({
         if (!is.data.frame(table_front_page)) {
@@ -104,10 +107,36 @@ server = function(input, output, session) {
         oid = table_front_page[sel, "order_id"]
         sel_paths = order_files_paths[[oid]]
         
-        ms = read.csv(sel_paths[grep("-merged-sheets.csv$", sel_paths)],
-                      header = T, check.names = F)
+        hold = list()
 
-        ms_val(ms)
+        # 1. engineering sheets
+        engineering_sheets_p = sel_paths[grep("engineering_sheets", sel_paths)]
+        if (length(engineering_sheets_p)) {
+            for (i in engineering_sheets_p) {
+                i_ = sapply(strsplit(i, "/"), function(x) x[length(x)])
+                i_ = paste0(oid, "_", i_)
+                hold[[i_]] = read.csv(i, header = T, check.names = F)
+            }
+        }
+        
+        # 2. merged sheets 
+        mosp = sel_paths[grep("-merged-sheets.csv$", sel_paths)]
+        mosp_ = sapply(strsplit(mosp, "/"), function(x) x[length(x)])
+        mosp_ = gsub("-merged-sheets.csv", "_merged-sheets.csv", mosp_)
+        ms = read.csv(mosp, header = T, check.names = F)
+        hold[[mosp_]] = ms
+        
+        # 3. download info.
+        info = Sys.info()
+        si = data.frame(user=info["user"],
+                        nodename=info["nodename"],
+                        sysname=info["sysname"])
+          
+        si = cbind(si, table_front_page[sel,,drop=F])
+        sin = paste0(oid, "_", Sys.Date(), "_download-info.csv")
+        hold[[sin]] = si
+        
+        ms_val(hold)
         ms_val2(oid)
         
         output$plot = renderPlot( { 
@@ -128,7 +157,7 @@ server = function(input, output, session) {
             "afterEnd",
             ui = ui
         )
-    
+        
     }) |> bindEvent(input$front_table_rows_selected)
 
     # download_order_sheets download handler
@@ -139,14 +168,29 @@ server = function(input, output, session) {
             }else{
                 tmp = ms_val2()
             }
-            paste0(tmp, "_", Sys.Date(), "_merged-order-sheets.csv")
+            paste0(tmp, "_", Sys.Date(), "_merged-order-sheets.zip")
         },
         content = function(file) {
-            res = ms_val()
-            write.csv(res,
-                      file, row.names = FALSE)
-        }
+            temp_dir = tempdir()
+            
+            RES = ms_val()
+            files_to_zip = names(RES)
+            full_paths = file.path(temp_dir, files_to_zip)
+            
+            for (j in 1:length(files_to_zip)) {
+                write.csv(RES[[j]], file=full_paths[j], row.names=FALSE)    
+            }
+    
+            # zip() records whatever paths you give it, so cd into temp_dir
+            # first so the archive doesn't include the full absolute path
+            old_wd = setwd(temp_dir)
+            on.exit(setwd(old_wd))
+            
+            zip::zip(zipfile=file, files=files_to_zip)
+        },
+        contentType = "application/zip"
     )
+    
     
     
     # Part II ----------------------------------------------------------- #
@@ -155,62 +199,8 @@ server = function(input, output, session) {
     location_map_val = reactiveVal()
     metadata_val = reactiveVal()
     merged_sheets_val = reactiveVal()
+    eng_sheets_val = reactiveVal()
     
-    # 1. submit_order_id
-    # observe({
-    #     if (order_type==1) {
-            
-    #         ui = tags$div(
-    #             id = "order_id_div",
-                
-    #             textInput( 
-    #                 "order_id_text", 
-    #                 "Enter Order ID", 
-    #                 placeholder = "Enter text...",
-    #                 width = "100%"
-    #             ),
-                
-    #             actionButton(inputId = "submit_order_id", 
-    #                          label = "Submit",
-    #                          class="btn-warning",
-    #                          width = "100%")
-    #         )
-            
-    #     }else{
-            
-    #         ui = tags$div(
-    #             id = "order_id_div",
-                
-    #             selectizeInput( 
-    #                 "previous_id", 
-    #                 "Previous Order ID", 
-    #                 c("None", table_front_page$order_id)
-    #             ),
-                
-    #             textInput( 
-    #                 "order_id_text", 
-    #                 "Current Order ID", 
-    #                 placeholder = "Enter text...",
-    #                 width = "100%"
-    #             ),
-                
-    #             actionButton(inputId = "submit_order_id2", 
-    #                          label = "Submit",
-    #                          class="btn-warning",
-    #                          width = "100%")
-    #         )
-    #     }
-        
-    #     removeUI("#order_id_div")
-        
-    #     insertUI(
-    #         "#order_id_top_div",
-    #         "afterEnd",
-    #         ui=ui
-    #     )
-        
-    # }) |> bindEvent(order_type)
-
     observe({
         if (nchar(input$order_id_text) <= 1) {
             order_id_checks = FALSE
@@ -226,9 +216,8 @@ server = function(input, output, session) {
             )
         }else{
             check1 = input$order_id_text %in% table_front_page$order_id
-            check2 = order_type == 1
             
-            if (check1 & check2) {
+            if (check1) {
                 showNotification(
                     ui = paste("Entered order ID exists. Select 'Update' option for updates."),
                     type = "message",
@@ -237,7 +226,6 @@ server = function(input, output, session) {
             }else{
                 removeUI("#order_id_div")
                 removeUI("#goto_database_div")
-                # removeUI("#order_type")
                 
                 insertUI(
                     selector = "#current_date",
@@ -354,174 +342,6 @@ server = function(input, output, session) {
         }
         
     }) |> bindEvent(input$submit_order_id)
-    
-    # observe({
-    #     
-    #     if (input$previous_id=="None") {
-    #         showNotification(
-    #             ui = paste("Please select the previous order."),
-    #             type = "message",
-    #             duration = 5
-    #         )
-    #     }else{
-    #         
-    #         if (nchar(input$order_id_text) <= 1) {
-    #             order_id_checks = FALSE
-    #         }else{
-    #             order_id_checks = TRUE
-    #         }
-    #         
-    #         if (!order_id_checks) {
-    #             showNotification(
-    #                 ui = paste("Please enter a valid order ID."),
-    #                 type = "message",
-    #                 duration = 5
-    #             )
-    #         }else{
-    #             check1 = input$order_id_text %in% table_front_page$order_id
-    #             if (check1) {
-    #                 showNotification(
-    #                     ui = paste("Entered order ID exists."),
-    #                     type = "message",
-    #                     duration = 5
-    #                 )
-    #             }else{
-    #                 
-    #                 oid = input$previous_id
-    #                 sel_paths = order_files_paths[[oid]]
-    #                 
-    #                 ms = read.csv(sel_paths[grep("-merged-sheets.csv$", sel_paths)],
-    #                               header = T, check.names = F)
-    #                 
-    #                 cms_ = colnames(ms)
-    #                 cms = cms_[grep("^sequence|^Order ID|^Name", cms_)]
-    #                 ms_sub = ms[,cms,drop=F]
-    #                 
-    #                 colnames(ms_sub)[colnames(ms_sub)=="Name"] = "Protein Name"
-    #                 clone_strategy_val(ms_sub)
-    #                 
-    #                 ms_key = ms[,which(cms_ == "assembly_id"):ncol(ms),drop=F]
-    #                 metadata_val(ms_key)
-    #                 
-    #                 removeUI("#order_id_div")
-    #                 removeUI("#goto_database_div")
-    #                 # removeUI("#order_type")
-    #                 
-    #                 insertUI(
-    #                     selector = "#current_date",
-    #                     where = "afterEnd",
-    #                     ui = tags$div(
-    #                         id = "order_id_div",
-    #                         tags$p(paste0("Order ID: ",
-    #                                       input$order_id_text),
-    #                                class="text-secondary"),
-    #                         tags$p(""),
-    #                         actionButton(inputId="reset_form", 
-    #                                      label="Back to Frontpage",
-    #                                      width="100%",
-    #                                      disabled=FALSE),
-    #                         tags$div(id="below_reset_div"),
-    #                         tags$div(id="below_reset_div1")
-    #                     )
-    #                 )
-    #                 
-    #                 previous_order_sheet_ui = tags$div(
-    #                     class="col",
-    #                     tags$p("Clone strategy",
-    #                            class="h5 text-primary fw-bold"),
-    #                     tags$div(
-    #                         id="previous_order_sheet_div"
-    #                     ),
-    #                     tags$p(""),
-    #                     tags$br(),
-    #                     tags$div(id="prev_card_bottom_div"),
-    #                     tags$div(id="prev_card_bottom_div1",
-    #                          tags$p(paste0(oid, " (Size=", nrow(ms), ")"),
-    #                                 class="h6 text-secondary")
-    #                     )
-    #                 )
-    #                 
-    #                 order_summary_sheet_ui = tags$div(
-    #                     class="col",
-    #                     tags$p("Order summary",
-    #                            class="h5 text-primary fw-bold"),
-    #                     tags$div(
-    #                         id="order_summary_sheet_div"
-    #                     ),
-    #                     fileInput("order_summary_file",
-    #                               "Upload order summary sheet",
-    #                               width="100%"),
-    #                     actionButton("order_summary_preproc",
-    #                                  "Preprocess Order Summary",
-    #                                  width="100%",
-    #                                  class="btn-secondary",
-    #                                  disabled=FALSE),
-    #                     tags$div(id="order_summary_preproc_bottom_div")
-    #                 )
-    #                 
-    #                 location_map_sheet_ui = tags$div(
-    #                     class="col",
-    #                     tags$p("Location map",
-    #                            class="h5 text-primary fw-bold"),
-    #                     tags$div(
-    #                         id="location_map_sheet_div"
-    #                     ),
-    #                     fileInput("location_map_file",
-    #                               "Upload location map sheet",
-    #                               width="100%"),
-    #                     actionButton("location_map_preproc",
-    #                                  "Preprocess Location Map",
-    #                                  width="100%",
-    #                                  class="btn-secondary",
-    #                                  disabled=TRUE),
-    #                     tags$div(id="location_map_preproc_bottom_div")
-    #                 )
-    #                 
-    #                 order_report_sheet_ui = tags$div(
-    #                     class="col",
-    #                     tags$div(
-    #                         id="order_report_sheet_div"
-    #                     ),
-    #                     tags$div(
-    #                         id="order_report_sheet_div1",
-    #                         tags$p("Order report",
-    #                                class="h5 text-primary fw-bold"),
-    #                         tags$div(
-    #                             id="order_report_sheet_div"
-    #                         ),
-    #                         fileInput("order_report_file",
-    #                                   "Upload order report pdf",
-    #                                   width="100%"),
-    #                         actionButton("order_report_info",
-    #                                      "Get Report Information",
-    #                                      class="btn-secondary",
-    #                                      width="100%",
-    #                                      disabled=TRUE),
-    #                         tags$div(id="order_report_info_bottom_div")
-    #                     ),
-    #                 )
-    #                 
-    #                 ui = tags$div(
-    #                     id = "main_contents2",
-    #                     class="row",
-    #                     previous_order_sheet_ui,
-    #                     order_summary_sheet_ui,
-    #                     location_map_sheet_ui,
-    #                     order_report_sheet_ui
-    #                 )
-    #                 
-    #                 removeUI("#main_contents2")
-    #                 
-    #                 insertUI(
-    #                     selector="#main_contents",
-    #                     where="afterEnd",
-    #                     ui=ui
-    #                 )
-    #             }
-    #         }
-    #     }
-    #     
-    # }) |> bindEvent(input$submit_order_id2)
     
     observe({
         session$reload()
@@ -691,41 +511,22 @@ server = function(input, output, session) {
                             id1 = clone_strategy_df[,"Protein Name"]
                             id2 = order_summary_df[,"Name"]
                             
-                            if (order_type==1) {
-                                if (!length(id1)==length(id2)) {
-                                    id_check = FALSE    
-                                }else{
-                                    if (!all(sort(id1)==sort(id2))) {
-                                        id_check = FALSE
-                                    }else{
-                                        id_check = TRUE
-                                    }
-                                } 
-                            }
-        
-                            if (order_type==2) {
-                                if (!all(id2 %in% id1)) {
+                            if (!length(id1)==length(id2)) {
+                                id_check = FALSE    
+                            }else{
+                                if (!all(sort(id1)==sort(id2))) {
                                     id_check = FALSE
                                 }else{
                                     id_check = TRUE
                                 }
-                            }
+                            } 
                             
                             if (!id_check) {
-                                if (order_type==1) {
-                                    showNotification(
-                                        ui = "Clone_Strategy 'Protein Name' and Order_Summary 'Name' do not match!",
-                                        type = "message",
-                                        duration = 5
-                                    )
-                                }
-                                if (order_type==2) {
-                                    showNotification(
-                                        ui = "Order_Summary 'Name' is not contained in Clone_Strategy 'Protein Name'!",
-                                        type = "message",
-                                        duration = 5
-                                    )
-                                }
+                                showNotification(
+                                    ui = "Clone_Strategy 'Protein Name' and Order_Summary 'Name' do not match!",
+                                    type = "message",
+                                    duration = 5
+                                )
                             }else{
                                 cn = colnames(order_summary_df)
                                 msg1 = obs_order_id
@@ -770,19 +571,7 @@ server = function(input, output, session) {
                                                    disabled=FALSE)
                                 
                                 order_summary_val(order_summary_df)
-               
-                                if (order_type==2) {
-                                    rownames(clone_strategy_df) = clone_strategy_df$"Protein Name"
-                                    clone_strategy_df = clone_strategy_df[order_summary_df$Name,,drop=F]
-                                    clone_strategy_val(clone_strategy_df)
-                                    
-                                    metadata_df = metadata_val()
-                                    rownames(metadata_df) = metadata_df$assembly_id
-                                    metadata_df = metadata_df[order_summary_df$Name,,drop=F]
-                                    metadata_val(metadata_df) 
-                                }
-                                
-                        
+              
                             }
                         }
                     }
@@ -934,7 +723,7 @@ server = function(input, output, session) {
                                              disabled=FALSE)
                             )
                             
-                            if (order_type==1) {
+                            if (TRUE) {
                                 insertUI(
                                     "#below_reset_div",
                                     "afterEnd",
@@ -1130,9 +919,12 @@ server = function(input, output, session) {
     
     # 7. merge_sheets
     observe({
+        removeUI("#below_reset_div1")
+        removeUI("#main_contents2")
+        
         withProgress(message = 'Merge in progress...', 
                      value = 0, {
-              
+                         
                          order_summary_df = order_summary_val()
                          clone_strategy_df = clone_strategy_val()
                          location_map_df = location_map_val()
@@ -1157,108 +949,330 @@ server = function(input, output, session) {
                              metadata_df[na_assembly_id,"assembly_id"] = tmp
                              metadata_df[na_assembly_id,"assembly_id_alias"] = tmp
                          }
-                         
-                         if (order_type==1) {
-                             order_type = "new_order"
-                         }else{
-                             order_type = "update"
-                         }
+
                          merged_sheets_df = cbind(order_summary_df,
                                                   clone_strategy_df,
                                                   location_map_df,
                                                   merge_date = rep(Sys.Date(), length(merge_id)),
-                                                  order_type = rep(order_type, length(merge_id)),
                                                   metadata_df)
                          
                          rownames(merged_sheets_df) = NULL
                          
                          merged_sheets_val(merged_sheets_df)
-                         
-                         sys_date_ = Sys.Date()
-                         sys_date = substr(sys_date_, 1, 7)
-                         main_folder_date = paste0(main_folder, "/", sys_date)
-                         
-                         if (!dir.exists(main_folder_date)) {
-                             dir.create(main_folder_date)
-                         }
-                         
-                         order_id_text = input$order_id_text
-                         main_folder_order = paste0(main_folder_date, "/", order_id_text)
-                         
-                         if (!dir.exists(main_folder_order)) {
-                             dir.create(main_folder_order)
-                         }
-                         
-                         main_merged_sheets = paste0(main_folder_order, "/merged_sheets")
-                         main_order_data = paste0(main_folder_order, "/order_data")
-                         
-                         if (!dir.exists(main_merged_sheets)) {
-                             dir.create(main_merged_sheets)
-                         }
-                         if (!dir.exists(main_order_data)) {
-                             dir.create(main_order_data)
-                         }
-                         
-                         main_merged_sheets_name = paste0(order_id_text, "_",
-                                                          order_type, "_", 
-                                                          sys_date_, 
-                                                          "-merged-sheets.csv")
-                         
-                         merged_sheets_path = paste0(main_merged_sheets, 
-                                                     "/", 
-                                                     main_merged_sheets_name)
-                         
-                         write.csv(merged_sheets_df, file=merged_sheets_path, row.names=F)
-                         
-                         hold = list(input$clone_strategy_file,
-                                     input$order_summary_file,
-                                     input$location_map_file,
-                                     input$order_report_file)
-                         
-                         for (i in 1:length(hold)) {
-                             info = hold[[i]]
-                             if (!is.null(info)) {
-                                 
-                                 loc_fl = paste0(main_order_data, "/",
-                                                 gsub(" ", "_", info[,"name"]))
-                                 
-                                 loc_fl = gsub("\\([0-9]+\\)", "", loc_fl)
-                                 
-                                 cmd = paste0("cp ",
-                                              info[,"datapath"], " ",
-                                              loc_fl)
-                                 system(cmd)
-                             }
-                         }
-                         
-        })
+                     })
         
-        removeUI("#below_reset_div1")
-        
-        ui2 = tags$div(
-            id="below_reset_div1",
-            tags$p(""),
-            tags$br(),
-            tags$p(""),
-            tags$p("Merge complete!",
-                   class="h6 text-secondary"),
-            tags$br(),
-            tags$p("You may exit app",
-                   class="h6 text-secondary"),
-        )
-        
-        insertUI(
-            "#below_reset_div",
-            "afterEnd",
-            ui=ui2
-        )
-        
-        removeUI("#main_contents2")
+        if (all(merged_sheets_df$construction_id %in% "not_available")) {
+            # start save
+            sys_date_ = Sys.Date()
+            sys_date = substr(sys_date_, 1, 7)
+            main_folder_date = paste0(main_folder, "/", sys_date)
+            
+            if (!dir.exists(main_folder_date)) {
+                dir.create(main_folder_date)
+            }
+            
+            order_id_text = input$order_id_text
+            main_folder_order = paste0(main_folder_date, "/", order_id_text)
+            
+            if (!dir.exists(main_folder_order)) {
+                dir.create(main_folder_order)
+            }
+            
+            main_merged_sheets = paste0(main_folder_order, "/merged_sheets")
+            main_order_data = paste0(main_folder_order, "/order_data")
+            
+            if (!dir.exists(main_merged_sheets)) {
+                dir.create(main_merged_sheets)
+            }
+            if (!dir.exists(main_order_data)) {
+                dir.create(main_order_data)
+            }
+            
+            main_merged_sheets_name = paste0(order_id_text, "_",
+                                             sys_date_, 
+                                             "-merged-sheets.csv")
+            
+            merged_sheets_path = paste0(main_merged_sheets, 
+                                        "/", 
+                                        main_merged_sheets_name)
+            
+            write.csv(merged_sheets_df, file=merged_sheets_path, row.names=F)
+            
+            hold = list(input$clone_strategy_file,
+                        input$order_summary_file,
+                        input$location_map_file,
+                        input$order_report_file)
+            
+            for (i in 1:length(hold)) {
+                info = hold[[i]]
+                if (!is.null(info)) {
+                    
+                    loc_fl = paste0(main_order_data, "/",
+                                    gsub(" ", "_", info[,"name"]))
+                    
+                    loc_fl = gsub("\\([0-9]+\\)", "", loc_fl)
+                    
+                    cmd = paste0("cp ",
+                                 info[,"datapath"], " ",
+                                 loc_fl)
+                    system(cmd)
+                }
+            }
+            
+            ui2 = tags$div(
+                id="below_reset_div1",
+                tags$p(""),
+                tags$br(),
+                tags$p(""),
+                tags$p("Merge complete!",
+                       class="h6 text-secondary"),
+                tags$br(),
+                tags$p("You may exit app",
+                       class="h6 text-secondary"),
+            )
+            
+            insertUI(
+                "#below_reset_div",
+                "afterEnd",
+                ui=ui2
+            )
+            
+        }else{
+            
+            engineering_sheets = merged_sheets_df$engineering_sheet
+            engineering_sheets = engineering_sheets[!is.na(engineering_sheets)]
+            engineering_sheets = unique(engineering_sheets)
+            
+            sel = !merged_sheets_df$construction_id == "not_available"
+            
+            eng_sheets_tab = merged_sheets_df[sel, c("construction_id", 
+                                                     "engineering_sheet"),
+                                              drop=F]
+            
+            eng_sheets_tab = eng_sheets_tab[!is.na(eng_sheets_tab$engineering_sheet),,drop=F]
+            
+            eng_sheets_val(eng_sheets_tab)
+            
+            output$eng_tab = DT::renderDataTable(DT::datatable({
+                data.frame(engineering_sheet=engineering_sheets)
+            },
+            rownames = TRUE,
+            selection = "single",
+            options = list(pageLength=5,
+                           dom = "tpf",
+                           columnDefs = list(
+                               list(className='dt-nowrap', targets='_all'))
+            )))
+            
+            ui_eng = tags$div(
+                id ="main_contents2",
+                class="row",
+                tags$div(
+                    class="col",
+                    tags$p("Engineering Sheets Detected!",
+                           class="h5 text-primary fw-bold"),
+                    tags$p("Required engineering sheets are below"),
+                    DT::dataTableOutput("eng_tab")
+                ),
+                
+                tags$div(
+                    class="col",
+                    tags$p("Select the required sheets and upload"),
+                    fileInput("eng_sheets_files",
+                              NULL, 
+                              buttonLabel = "Upload sheets", 
+                              multiple = TRUE),
+                    tags$br(),
+                    actionButton(inputId="upload_eng_sheets", 
+                                 label="Upload Engineering Sheets",
+                                 class="btn-secondary",
+                                 disabled=FALSE),
+                ),
+            )
+            
+            insertUI(
+                "#main_contents",
+                "afterEnd",
+                ui=ui_eng
+            )
+        }
         
     }) |> bindEvent(input$merge_sheets)
     
+    # 8. upload_eng_sheets
+    observe({
+        
+        eng_sheets_tab = eng_sheets_val()
+        
+        datapath = input$eng_sheets_files$datapath
+        file_names = input$eng_sheets_files$name
+        
+        if (is.null(datapath)) {
+            showNotification(
+                ui = paste("Please select sheets."),
+                type = "message",
+                duration = 5
+            )
+        }else{
+            
+            eng_sheets_tabl = split(eng_sheets_tab, eng_sheets_tab$engineering_sheet)
+    
+            nms = names(eng_sheets_tabl)
+            file_names_check = nms %in% file_names
+            
+            if (!all(file_names_check)) {
+                
+                msg = paste0("The ff sheets are missing: ",
+                             paste0(which(!file_names_check), collapse = ", "),
+                             ".")
+                
+                showNotification(
+                    ui = msg,
+                    type = "message",
+                    duration = 5
+                )
+                
+            }else{
+            
+                names(datapath) = file_names
+                
+                eng_hold = list()
+                msg_hold = list()
+                
+                for (k in nms) {
+                    dat = read.csv(file = datapath[k], header = T, check.names = F)
+                    
+                    if (!"construction_id" %in% colnames(dat)) {
+                        msg = "does not have a 'construction_id' column"
+                    }else{
+                        if (!all(eng_sheets_tabl[[k]]$construction_id %in% dat$construction_id)) {
+                            msg = "construction ids missing"
+                        }else{
+                            msg = "pass"
+                        }
+                    }
+                    
+                    msg_hold[[k]] = msg
+                    eng_hold[[k]] = dat
+                }
+                
+                msg_hold = unlist(msg_hold)
+                
+                pcheck = msg_hold %in% "pass"
+                if (!all(pcheck)) {
+                    m1 = msg_hold[pcheck][1]
+                    m2 = names(msg_hold)[pcheck][1]
+                    
+                    showNotification(
+                        ui = paste0(m2, ": ", m1),
+                        type = "message",
+                        duration = 5
+                    )
+                    
+                }else{
+                    # all checks passed
+                    merged_sheets_df = merged_sheets_val()
+                    
+                    # start save
+                    sys_date_ = Sys.Date()
+                    sys_date = substr(sys_date_, 1, 7)
+                    main_folder_date = paste0(main_folder, "/", sys_date)
+                    
+                    if (!dir.exists(main_folder_date)) {
+                        dir.create(main_folder_date)
+                    }
+                    
+                    order_id_text = input$order_id_text
+                    main_folder_order = paste0(main_folder_date, "/", order_id_text)
+                    
+                    if (!dir.exists(main_folder_order)) {
+                        dir.create(main_folder_order)
+                    }
+                    
+                    main_merged_sheets = paste0(main_folder_order, "/merged_sheets")
+                    main_order_data = paste0(main_folder_order, "/order_data")
+                    engineering_sheets_data = paste0(main_folder_order, "/engineering_sheets")
+                    
+                    if (!dir.exists(main_merged_sheets)) {
+                        dir.create(main_merged_sheets)
+                    }
+                    if (!dir.exists(main_order_data)) {
+                        dir.create(main_order_data)
+                    }
+                    if (!dir.exists(engineering_sheets_data)) {
+                        dir.create(engineering_sheets_data)
+                    }
+                    
+                    main_merged_sheets_name = paste0(order_id_text, "_",
+                                                     sys_date_, 
+                                                     "-merged-sheets.csv")
+                    
+                    merged_sheets_path = paste0(main_merged_sheets, 
+                                                "/", 
+                                                main_merged_sheets_name)
+                    
+                    write.csv(merged_sheets_df, file=merged_sheets_path, row.names=F)
+                    
+                    hold = list(input$clone_strategy_file,
+                                input$order_summary_file,
+                                input$location_map_file,
+                                input$order_report_file)
+                    
+                    for (i in 1:length(hold)) {
+                        info = hold[[i]]
+                        if (!is.null(info)) {
+                            
+                            loc_fl = paste0(main_order_data, "/",
+                                            gsub(" ", "_", info[,"name"]))
+                            
+                            loc_fl = gsub("\\([0-9]+\\)", "", loc_fl)
+                            
+                            cmd = paste0("cp ",
+                                         info[,"datapath"], " ",
+                                         loc_fl)
+                            system(cmd)
+                        }
+                    }
+                    
+                    
+                    for (fl in names(eng_hold)) {
+                        flp = paste0(engineering_sheets_data, "/", fl)
+                        Y = eng_hold[[fl]]
+                        Y = cbind("order_id"=rep(input$order_id_text, nrow(Y)),
+                                  Y)
+                        write.csv(Y,
+                                  file = flp,
+                                  row.names = FALSE)
+                    }
+                    
+                    
+                    removeUI("#main_contents2")
+                    removeUI("#below_reset_div1")
+                    
+                    ui2 = tags$div(
+                        id="below_reset_div1",
+                        tags$p(""),
+                        tags$br(),
+                        tags$p(""),
+                        tags$p("Merge complete!",
+                               class="h6 text-secondary"),
+                        tags$br(),
+                        tags$p("You may exit app",
+                               class="h6 text-secondary"),
+                    )
+                    
+                    insertUI(
+                        "#below_reset_div",
+                        "afterEnd",
+                        ui=ui2
+                    )
+                    
+                    
+                }
+            }
+        }
+        
+    }) |> bindEvent(input$upload_eng_sheets)
+    
 }
-
-
-
 
