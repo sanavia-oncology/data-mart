@@ -4,6 +4,8 @@ Companion to genscript_upload.py, which pushes what this module constructs.
 
 import re
 import sys
+import tempfile
+import zipfile
 from pathlib import Path
 
 import pandas as pd
@@ -36,7 +38,13 @@ ASSEMBLY_TYPE_SCHEMAS = {
     "prod": "ts_TiiMdLojtS",
 }
 
-ASSEMBLY_TYPE_FIELD = "Assembly type"
+ASSEMBLY_TYPE_FIELD = "assembly_type"
+ASSEMBLY_TYPE_LINK_FIELD = "Assembly Type Construct"
+ORDER_SHEET_FIELD = "Order Sheet"
+CONSTRUCTION_ID_FIELD = "construction_id"
+ENGINEERING_SHEET_FIELD = "engineering_sheet"
+ENGINEERING_SHEETS_DIR = "engineering_sheets"
+NOT_AVAILABLE = "not_available"
 
 # Box schema per GenScript "Box Type"; an unknown type is rejected in validate_tubes.
 BOX_SCHEMAS = {
@@ -67,6 +75,10 @@ def empty_to_none(v):
     return v if v not in (None, "") else None
 
 
+def available_or_none(v):
+    return None if v in (None, "", NOT_AVAILABLE) else v
+
+
 def split_pipe(s) -> list[str]:
     s = (s or "").strip()
     return [part.strip() for part in s.split("|")] if s else []
@@ -94,10 +106,10 @@ def grid_positions(box_type: str) -> set[str] | None:
 # CSV column -> Benchling Lot field, transform, required. Required cols (identity + QC)
 # must be present; the rest are optional. Derived/constant/Sequence fields: lot_fields_for.
 LOT_FIELDS: list[tuple[str, str, callable, bool]] = [
-    ("Name",                          "Protein Name",                    empty_to_none, True),
-    ("Order ID",                      "Order number",                    empty_to_none, True),
-    ("Lot No",                        "Lot number",                      empty_to_none, True),
-    ("merge_date",                    "Date received",                   empty_to_none, True),
+    ("Name",                          "Name",                            empty_to_none, True),
+    ("Order ID",                      "Order ID",                        empty_to_none, True),
+    ("Lot No",                        "Lot No",                          empty_to_none, True),
+    ("merge_date",                    "merge_date",                      empty_to_none, True),
     ("Type",                          "Type",                            empty_to_none, True),
     ("Ship Temp (Deg. Cels.)",        "Ship Temp (Deg. Cels.)",          to_float,      True),
     ("Cal. M.W.(KDa)",                "Cal. M.W.(KDa)",                  to_float,      True),
@@ -105,26 +117,32 @@ LOT_FIELDS: list[tuple[str, str, callable, bool]] = [
     ("Extinction Coefficients",       "Extinction Coefficients",         to_float,      True),
     ("Purification",                  "Purification",                    empty_to_none, True),
     ("Buffer",                        "Buffer",                          empty_to_none, True),
-    ("Concentration(mg/ml)",          "Concentration (mg/mL)",           to_float,      True),
-    ("Purity by SEC-HPLC(%)",         "Purity % >= (SEC-HPLC)",          to_float,      True),
-    ("Purity by CE-SDS under NR(%)",  "Purity % >= (SDS-PAGE under NR)", to_float,      True),
-    ("Endotoxin Level(EU/mg)",        "Endotoxin level (EU/mg)",         to_float,      True),
-    ("Total(mg)",                     "Total amount (mg)",               to_float,      True),
-    ("Size-Volume(ml)",               "Size volume (mL)",                empty_to_none, False),
-    ("Unit(Tube)",                    "Units (tubes)",                   empty_to_none, False),
-    ("assembly_id",                   "Assembly ID",                     empty_to_none, False),
-    ("assembly_id_alias",             "Assembly ID alias",               empty_to_none, False),
-    ("assembly_type",                 "Assembly type",                   empty_to_none, False),
-    ("assembly_type_alias",           "Assembly type alias",             empty_to_none, False),
-    ("target1",                       "Target1",                         empty_to_none, False),
-    ("target1_alias",                 "Target1 alias",                   empty_to_none, False),
-    ("target1_antigen",               "Target1 antigen",                 empty_to_none, False),
-    ("target2",                       "Target2",                         empty_to_none, False),
-    ("target2_alias",                 "Target2 alias",                   empty_to_none, False),
-    ("target2_antigen",               "Target2 antigen",                 empty_to_none, False),
+    ("Concentration(mg/ml)",          "Concentration(mg/ml)",            to_float,      True),
+    ("Purity by SEC-HPLC(%)",         "Purity by SEC-HPLC(%)",           to_float,      True),
+    ("Purity by CE-SDS under NR(%)",  "Purity by CE-SDS under NR(%)",    to_float,      False),
+    ("Purity by SDS-PAGE under NR(%)","Purity by SDS-PAGE under NR(%)",  to_float,      False),
+    ("Endotoxin Level(EU/mg)",        "Endotoxin Level(EU/mg)",          to_float,      True),
+    ("Endotoxin Level(EU/ml)",        "Endotoxin Level(EU/ml)",          to_float,      False),
+    ("Total(mg)",                     "Total(mg)",                       to_float,      True),
+    ("Size-Volume(ml)",               "Size-Volume(ml)",                 to_float,      False),
+    ("Unit(Tube)",                    "Unit(Tube)",                      empty_to_none, False),
+    ("assembly_id",                   "assembly_id",                     empty_to_none, False),
+    ("assembly_id_alias",             "assembly_id_alias",               empty_to_none, True),
+    ("assembly_type",                 "assembly_type",                   empty_to_none, False),
+    ("assembly_type_alias",           "assembly_type_alias",             empty_to_none, False),
+    ("target1",                       "target1",                         empty_to_none, False),
+    ("target1_alias",                 "target1_alias",                   empty_to_none, False),
+    ("target1_antigen",               "target1_antigen",                 empty_to_none, False),
+    ("target2",                       "target2",                         empty_to_none, False),
+    ("target2_alias",                 "target2_alias",                   empty_to_none, False),
+    ("target2_antigen",               "target2_antigen",                 empty_to_none, False),
+    ("construction_id",                "construction_id",                 available_or_none, False),
 ]
 
 LOT_CONSTANT_FIELDS = {"Supplier": SUPPLIER}
+
+# GenScript runs one of these two assays per order, never both.
+PURITY_NR_COLUMNS = ["Purity by CE-SDS under NR(%)", "Purity by SDS-PAGE under NR(%)"]
 
 # Required fields above + structural columns (tubes, first two sequences).
 REQUIRED_CSV_COLUMNS = (
@@ -149,13 +167,8 @@ LOT_NAME_SEP = " - "
 
 
 def lot_name_for(row) -> str:
-    """Lot display name "<assembly alias> - <lot no>". The alias columns are optional,
-    so fall back to the raw assembly id, then to the lot number alone."""
-    for col in ("assembly_id_alias", "assembly_id"):
-        alias = "" if col not in row.index or pd.isna(row[col]) else str(row[col]).strip()
-        if alias:
-            return f"{alias}{LOT_NAME_SEP}{row['Lot No']}"
-    return row["Lot No"]
+    """Lot display name "<assembly alias> - <lot no>"; read_csv guarantees the alias."""
+    return f"{row['assembly_id_alias']}{LOT_NAME_SEP}{row['Lot No']}"
 
 
 def lot_name_has_order(name: str, prefix: str) -> bool:
@@ -177,18 +190,21 @@ def box_full_name(tube: dict, order_id_prefix: str) -> str:
 
 
 def lot_fields_for(row, seq_ids: list, tubes: list[dict],
-                   assembly_type_ids: dict) -> dict:
+                   assembly_type_ids: dict, sheet_blob_id: str | None = None,
+                   eng_blob_id: str | None = None) -> dict:
     """LOT_FIELDS (present columns) + Supplier + derived count/volume + seq links.
     Box/position live on the containers, not the lot."""
     out = {b: tx(row[csv]) for csv, b, tx, _ in LOT_FIELDS if csv in row.index}
     out.update(LOT_CONSTANT_FIELDS)
     out["Number of units"] = float(len(tubes))
-    out["Volume (mL)"] = round(
+    out["Volume(ml)"] = round(
         sum(float(t["vol"]) for t in tubes if t["vol"] not in (None, "")), 4)
     for i, sid in enumerate(seq_ids, start=1):
         out[f"Sequence{i}"] = sid  # None dropped by make_fields()
     code = out.get(ASSEMBLY_TYPE_FIELD)
-    out[ASSEMBLY_TYPE_FIELD] = assembly_type_ids[code] if code else None
+    out[ASSEMBLY_TYPE_LINK_FIELD] = assembly_type_ids[code] if code else None
+    out[ORDER_SHEET_FIELD] = sheet_blob_id  # one blob per order, referenced by every lot
+    out[ENGINEERING_SHEET_FIELD] = eng_blob_id if out.get(CONSTRUCTION_ID_FIELD) else None
     return out
 
 
@@ -199,8 +215,15 @@ def read_csv(path: Path) -> pd.DataFrame:
     missing = [c for c in REQUIRED_CSV_COLUMNS if c not in df.columns]
     if missing:
         sys.exit(f"[LOCAL_PARSE] ERROR: CSV missing required columns: {missing}")
+    if not [c for c in PURITY_NR_COLUMNS if c in df.columns]:
+        sys.exit(f"[LOCAL_PARSE] ERROR: CSV has none of the purity-under-NR columns: "
+                 f"{PURITY_NR_COLUMNS}")
     for col in text_cols:
         df[col] = df[col].fillna("").astype(str).str.strip()
+    # The alias leads every lot/tube name, so a blank one fails here, before any write.
+    blank = df.index[df["assembly_id_alias"] == ""].tolist()
+    if blank:
+        sys.exit(f"[LOCAL_PARSE] ERROR: blank assembly_id_alias on row(s): {blank}")
     return df.reset_index(drop=True)
 
 
@@ -353,7 +376,8 @@ def row_seq_ids(sequence_ids: list[str], offsets: list[int], i: int) -> list:
 
 def build_lot_payloads(df: pd.DataFrame, registry_id: str, sequence_ids: list[str],
                        offsets: list[int], tubes_by_row: list[list[dict]],
-                       assembly_type_ids: dict) -> list:
+                       assembly_type_ids: dict, sheet_blob_id: str | None = None,
+                       eng_blob_id: str | None = None) -> list:
     return [
         CustomEntityBulkCreate(
             name=lot_name_for(row),
@@ -362,7 +386,7 @@ def build_lot_payloads(df: pd.DataFrame, registry_id: str, sequence_ids: list[st
             naming_strategy=NamingStrategy.NEW_IDS,
             fields=make_fields(lot_fields_for(
                 row, row_seq_ids(sequence_ids, offsets, i), tubes_by_row[i],
-                assembly_type_ids)),
+                assembly_type_ids, sheet_blob_id, eng_blob_id)),
         )
         for i, row in df.iterrows()
     ]
@@ -417,3 +441,16 @@ def build_transfer_requests(flat: list[tuple[int, dict]], df: pd.DataFrame,
         )
         for j, (i, t) in enumerate(flat)
     ]
+
+
+def zip_engineering_sheets(csv_path: Path, order_prefix: str) -> Path | None:
+    """Zip of <order>/engineering_sheets/, built in a temp dir so the background sync never sees it."""
+    src = csv_path.resolve().parent.parent / ENGINEERING_SHEETS_DIR
+    files = sorted(f for f in src.iterdir() if f.is_file() and not f.name.startswith("."))if src.is_dir() else []
+    if not files:
+        return None
+    out = Path(tempfile.mkdtemp()) / f"{order_prefix}_{ENGINEERING_SHEETS_DIR}.zip"
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in files:
+            z.write(f, f.name)
+    return out

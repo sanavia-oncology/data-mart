@@ -72,6 +72,14 @@ def _active(item) -> bool:
     return getattr(item, "archive_record", None) is None
 
 
+def _name_held(item) -> bool:
+    """Archived registry entities keep their name; only the placeholder rename releases it."""
+    return not (item.name or "").startswith(DELETED_PREFIX)
+
+
+ANY_ARCHIVE_STATE = "ANY_ARCHIVED_OR_NOT_ARCHIVED"
+
+
 def _list_all(list_fn, label: str) -> list:
     """Materialize a paginated list(), retrying transient network errors."""
     return retry(lambda: list(_iter_items(list_fn())), label)
@@ -107,8 +115,9 @@ def discover_ids(benchling: Benchling, order_id: str
     lot_ids: dict[str, str] = {}
     seq_ids: dict[str, None] = {}
     for lot in _list_all(lambda: benchling.custom_entities.list(
-            schema_id=SCHEMAS["lot"], name_includes=prefix), "lots.list"):
-        if not (_active(lot) and lot_name_has_order(lot.name or "", prefix)):
+            schema_id=SCHEMAS["lot"], name_includes=prefix,
+            archive_reason=ANY_ARCHIVE_STATE), "lots.list"):
+        if not (_name_held(lot) and lot_name_has_order(lot.name or "", prefix)):
             continue
         lot_ids.setdefault(lot.id, lot.name or "")
         for sid in _seq_link_ids(lot):
@@ -117,8 +126,9 @@ def discover_ids(benchling: Benchling, order_id: str
     # Orphaned sequences (no Lot links them): match the "Order ID" field, "<prefix>-<n>".
     print(f"  Sequences: scanning schema for Order ID {prefix!r} ...", flush=True)
     for seq in _list_all(lambda: benchling.aa_sequences.list(
-            schema_id=SCHEMAS["sequence"], page_size=100), "sequences.list"):
-        if not _active(seq):
+            schema_id=SCHEMAS["sequence"], page_size=100,
+            archive_reason=ANY_ARCHIVE_STATE), "sequences.list"):
+        if not _name_held(seq):
             continue
         of = seq.fields.get("Order ID") if seq.fields else None
         if (getattr(of, "value", None) or "").split("-", 1)[0] == prefix:

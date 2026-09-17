@@ -25,18 +25,21 @@ def resolve_dropdown(benchling: Benchling, dropdown_name: str, option_name: str)
     sys.exit(f"[BENCHLING_PUSH] ERROR: dropdown {dropdown_name!r} not found")
 
 
-def assert_entity_link(benchling: Benchling, schema_id: str, field_name: str) -> None:
-    """Refuse to run against an unconverted field — Benchling would take the entity ids as
-    plain text. Read `.value`; the SDK enum stringifies entity_link as _UNKNOWN."""
+def assert_field_type(benchling: Benchling, schema_id: str, field_name: str,
+                      expected: str) -> None:
+    """Refuse a mismatched schema; `.value` because the SDK stringifies entity_link as _UNKNOWN."""
     schema = benchling.schemas.get_entity_schema_by_id(schema_id)
     for f in schema.field_definitions:
         if getattr(f, "name", None) == field_name:
             found = getattr(getattr(f, "type", None), "value", "") or "?"
-            if found != "entity_link":
-                sys.exit(f"[BENCHLING_PUSH] ERROR: field {field_name!r} is {found!r}, not "
-                         f"entity_link — convert it in Benchling before uploading")
+            if found != expected:
+                sys.exit(f"[BENCHLING_PUSH] ERROR: field {field_name!r} on schema "
+                         f"{schema.name!r} ({schema_id}) is {found!r}, not {expected!r} — "
+                         f"in Benchling, change that field's type to {expected!r} before uploading")
             return
-    sys.exit(f"[BENCHLING_PUSH] ERROR: no field {field_name!r} on schema {schema_id}")
+    sys.exit(f"[BENCHLING_PUSH] ERROR: no field {field_name!r} on schema {schema.name!r} "
+             f"({schema_id}) — in Benchling, add a {expected!r} field named {field_name!r} "
+             f"to that schema before uploading")
 
 
 def resolve_assembly_types(benchling: Benchling, schema_id: str) -> dict:

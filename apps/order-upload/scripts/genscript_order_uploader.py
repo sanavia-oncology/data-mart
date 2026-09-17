@@ -14,6 +14,10 @@ from benchling_io import connect, log
 from genscript_marker import write_marker
 from genscript_parse import (
     ASSEMBLY_TYPE_FIELD,
+    ASSEMBLY_TYPE_LINK_FIELD,
+    CONSTRUCTION_ID_FIELD,
+    ENGINEERING_SHEET_FIELD,
+    ORDER_SHEET_FIELD,
     ASSEMBLY_TYPE_SCHEMAS,
     CONTAINER_TYPE,
     SCHEMAS,
@@ -28,10 +32,11 @@ from genscript_parse import (
     seq_offsets,
     validate_assembly_types,
     validate_tubes,
+    zip_engineering_sheets,
 )
 from genscript_status_cache import set_state
 from genscript_upload import (
-    assert_entity_link,
+    assert_field_type,
     create_boxes,
     entity_field,
     resolve_assembly_types,
@@ -49,7 +54,7 @@ def _rows(*keys):
 
 def upload(benchling, df, tubes_by_row: list[list[dict]], registry_id: str,
            location_id: str, container_type_id: str, chunk_size: int,
-           assembly_type_ids: dict) -> int:
+           assembly_type_ids: dict, sheet_blob_id: str, eng_blob_id: str | None) -> int:
     """Build then push each of the 5 phases; `stage` tags which one failed on error.
     Recover a failed run with `scripts/dev-tools/cleanup_run.py --order-id`."""
     flat = flatten(tubes_by_row)
@@ -70,7 +75,8 @@ def upload(benchling, df, tubes_by_row: list[list[dict]], registry_id: str,
 
         log(stage := "LOCAL_BUILD", f"building {n_rows} lot payload(s) ...")
         lot_payloads = build_lot_payloads(df, registry_id, sequence_ids, offsets,
-                                          tubes_by_row, assembly_type_ids)
+                                          tubes_by_row, assembly_type_ids, sheet_blob_id,
+                                          eng_blob_id)
         log(stage := "BENCHLING_PUSH", f"creating {n_rows} GenScript Lot entities "
             f"(chunks of {chunk_size}) ...")
         lot_entries = run_bulk(benchling, lot_payloads, "lots", chunk_size,
@@ -144,20 +150,33 @@ def main() -> int:
     container_type_id = resolve_dropdown(benchling, "Container Type", CONTAINER_TYPE)
     log("BENCHLING_PUSH", f"container type {CONTAINER_TYPE!r} -> {container_type_id}")
 
-    assert_entity_link(benchling, SCHEMAS["lot"], ASSEMBLY_TYPE_FIELD)
+    assert_field_type(benchling, SCHEMAS["lot"], ASSEMBLY_TYPE_FIELD, "text")
+    assert_field_type(benchling, SCHEMAS["lot"], ASSEMBLY_TYPE_LINK_FIELD, "entity_link")
+    assert_field_type(benchling, SCHEMAS["lot"], ORDER_SHEET_FIELD, "blob_link")
+    assert_field_type(benchling, SCHEMAS["lot"], CONSTRUCTION_ID_FIELD, "text")
+    assert_field_type(benchling, SCHEMAS["lot"], ENGINEERING_SHEET_FIELD, "blob_link")
     assembly_type_ids = resolve_assembly_types(benchling, ASSEMBLY_TYPE_SCHEMAS[args.env])
     validate_assembly_types(df, assembly_type_ids)
     log("BENCHLING_PUSH", f"resolved {len(assembly_type_ids)} Assembly Type Construct entities")
 
+    sheet_blob_id = benchling.blobs.create_from_file(csv_path, mime_type="text/csv").id
+    log("BENCHLING_PUSH", f"uploaded order sheet {csv_path.name} -> {sheet_blob_id}")
+
+    prefix = str(df["Order ID"].iloc[0]).split("-", 1)[0]
+    eng_blob_id = None
+    if (eng_zip := zip_engineering_sheets(csv_path, prefix)) is not None:
+        eng_blob_id = benchling.blobs.create_from_file(eng_zip, mime_type="application/zip").id
+        log("BENCHLING_PUSH", f"uploaded {eng_zip.name} -> {eng_blob_id}")
+
     rc = upload(benchling, df, tubes_by_row, registry_id, args.location,
-                container_type_id, args.batch_size, assembly_type_ids)
+                container_type_id, args.batch_size, assembly_type_ids, sheet_blob_id,
+                eng_blob_id)
 
     # Final step of a successful push: stamp the completion marker. Status keys off this, so it
     # must be last — a failure in any earlier phase raises above and never reaches here. A marker
     # write that itself fails doesn't undo a good upload; log it and let a re-run/backfill fix it.
     # The mirror is stamped after, never before, so it can't claim more than the tenant holds.
     if rc == 0:
-        prefix = str(df["Order ID"].iloc[0]).split("-", 1)[0]
         try:
             mid = write_marker(benchling, prefix, args.env)
             set_state(args.env, prefix, "complete")
