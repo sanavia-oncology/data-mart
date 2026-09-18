@@ -48,6 +48,8 @@ scripts/gs_orders_sync_start.command    # double-click with aws-creds saved next
 scripts/gs_orders_sync_stop.command
 ```
 
+The agent runs an installed copy, so after any change to the start script re-run it on every Mac.
+
 ## More
 
 - [`docs/commands.md`](docs/commands.md) — manual push, undoing a failed run

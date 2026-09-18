@@ -28,9 +28,9 @@ run_sync() {
     mkdir -p "$STATE" "$LOGS"
     log() { printf '%s  %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$LOG"; }
 
-    # only YYYY-MM folders go up (same rule as the app; skips Legacy); junk excludes come last because the last match wins
+    # every order folder goes up, Legacy included; only the Benchling app skips Legacy. Junk excludes last: the last match wins
     EXCLUDES=(
-        --exclude "*" --include "[0-9][0-9][0-9][0-9]-[0-9][0-9]/*"
+        --exclude "*" --include "[0-9][0-9][0-9][0-9]-[0-9][0-9]/*" --include "Legacy/*"
         --exclude "*.DS_Store"
         --exclude "._*"        --exclude "*/._*"
         --exclude "Icon*"      --exclude "*/Icon*"
