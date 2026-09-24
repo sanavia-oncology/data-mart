@@ -104,18 +104,18 @@ def _seq_link_ids(lot) -> list[str]:
     return ids
 
 
-def discover_ids(benchling: Benchling, order_id: str
+def discover_ids(benchling: Benchling, order_id: str, env: str
                  ) -> tuple[list[str], list[str], list[str], list[str]]:
     """Rediscover (seq_ids, lot_ids, container_ids, box_ids) for an order-id prefix.
     Lots/boxes/containers match the prefix in their names; sequences via their lots'
     links + an "Order ID"-field scan (catches orphans from a failed run)."""
     prefix = order_id.strip()
 
-    print(f"  Lots: schema {SCHEMAS['lot']}, name contains {prefix!r} ...", flush=True)
+    print(f"  Lots: schema {SCHEMAS[env]['lot']}, name contains {prefix!r} ...", flush=True)
     lot_ids: dict[str, str] = {}
     seq_ids: dict[str, None] = {}
     for lot in _list_all(lambda: benchling.custom_entities.list(
-            schema_id=SCHEMAS["lot"], name_includes=prefix,
+            schema_id=SCHEMAS[env]["lot"], name_includes=prefix,
             archive_reason=ANY_ARCHIVE_STATE), "lots.list"):
         if not (_name_held(lot) and lot_name_has_order(lot.name or "", prefix)):
             continue
@@ -126,7 +126,7 @@ def discover_ids(benchling: Benchling, order_id: str
     # Orphaned sequences (no Lot links them): match the "Order ID" field, "<prefix>-<n>".
     print(f"  Sequences: scanning schema for Order ID {prefix!r} ...", flush=True)
     for seq in _list_all(lambda: benchling.aa_sequences.list(
-            schema_id=SCHEMAS["sequence"], page_size=100,
+            schema_id=SCHEMAS[env]["sequence"], page_size=100,
             archive_reason=ANY_ARCHIVE_STATE), "sequences.list"):
         if not _name_held(seq):
             continue
@@ -143,7 +143,7 @@ def discover_ids(benchling: Benchling, order_id: str
     print(f"  Containers: name contains {prefix!r} ...", flush=True)
     container_ids: dict[str, str] = {}
     for c in _list_all(lambda: benchling.containers.list(
-            schema_id=SCHEMAS["container"], name_includes=prefix), "containers.list"):
+            schema_id=SCHEMAS[env]["container"], name_includes=prefix), "containers.list"):
         if _active(c) and lot_name_has_order(c.name or "", prefix):
             container_ids.setdefault(c.id, c.name or "")
 
@@ -305,7 +305,7 @@ def main() -> int:
     benchling = connect(args.env)
     print(f"Connected to {args.env} tenant")
     print(f"Discovering entities for order {args.order_id!r} from the tenant ...")
-    seq_ids, lot_ids, container_ids, box_ids = discover_ids(benchling, args.order_id)
+    seq_ids, lot_ids, container_ids, box_ids = discover_ids(benchling, args.order_id, args.env)
     source = f"order {args.order_id!r} (tenant)"
     prefix = args.order_id.strip().split("-", 1)[0]
 

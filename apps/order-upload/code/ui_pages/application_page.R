@@ -10,9 +10,6 @@ main_contents <- tags$div(
             tags$p("Orders", class = "h5 text-primary fw-bold", style = "margin-bottom: 2px;"),
             tags$p("Click an order to upload it to Benchling or clean it up.",
                    class = "text-secondary", style = "font-size: 13px;"),
-            tags$div(id = "orders_spinner", class = "orders-loading",
-                     tags$div(class = "spinner"),
-                     tags$span("Loading orders…")),
             tags$div(id = "uploaded_wrap", style = "display: none;",
                 fluidRow(column(6, selectInput("uploaded", "Uploaded",
                                                c("All", "Yes", "No", "Failed"))))),
@@ -49,8 +46,7 @@ app_card <- tags$div(
             tags$p("Orders", class = "h6 fw-bold", style = "margin-bottom: 2px;"),
             tags$p("Sync order files from disk and check which are already in Benchling.",
                    class = "text-secondary", style = "font-size: 13px;"),
-            actionButton("refresh", "Refresh", class = "btn-primary", icon = icon("arrows-rotate"),
-                         onclick = "var s=document.getElementById('orders_spinner'); if(s) s.style.display='';"),
+            actionButton("refresh", "Refresh", class = "btn-primary", icon = icon("arrows-rotate")),
             tags$div(style = "margin-top: 14px;", uiOutput("sidebar_status")),
             # Clean up is rare and destructive — a muted text link pinned to the bottom of the
             # sidebar, deliberately not a button, so nobody archives an order by a stray click.
@@ -61,6 +57,7 @@ app_card <- tags$div(
                               radioButtons("env_choice", "Tenant",
                                            choices = c(Test = "test", Production = "prod"),
                                            selected = "test", inline = TRUE)),
+                     uiOutput("conn_status"),
                      tags$div(actionLink("creds_btn", "Set App Credentials", class = "cleanup-link")))
         ),
         main_contents
@@ -71,11 +68,6 @@ application_page <- bslib::nav_panel(
     tags$style(HTML("
         .btn { padding: 6px 10px; font-size: 14px; }
 
-        .orders-loading { display: flex; align-items: center; gap: 10px; padding: 24px 2px;
-                          color: #6c757d; font-size: 13px; }
-        .orders-loading .spinner { width: 20px; height: 20px; border: 3px solid #dfe3e8;
-                          border-top-color: rgba(0,11,140,1); border-radius: 50%;
-                          animation: gs-spin 0.8s linear infinite; }
         @keyframes gs-spin { to { transform: rotate(360deg); } }
 
         .run-working { display: flex; align-items: center; gap: 8px; color: #6c757d; font-size: 13px; }

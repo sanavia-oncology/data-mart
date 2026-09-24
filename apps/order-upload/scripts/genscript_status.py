@@ -24,10 +24,10 @@ from genscript_parse import SCHEMAS, lot_name_has_order
 from genscript_status_cache import entry, write_states
 
 
-def has_any_lot(benchling, prefix: str) -> bool:
+def has_any_lot(benchling, prefix: str, env: str) -> bool:
     """True if at least one active lot for the order exists. Stops on the first match — one page,
     not a full count."""
-    for page in benchling.custom_entities.list(schema_id=SCHEMAS["lot"], name_includes=prefix):
+    for page in benchling.custom_entities.list(schema_id=SCHEMAS[env]["lot"], name_includes=prefix):
         for lot in page:
             if getattr(lot, "archive_record", None) is None and lot_name_has_order(lot.name or "", prefix):
                 return True
@@ -55,7 +55,7 @@ def main() -> int:
         if prefix in markers:                        # marker present -> done, no lot probe
             state = "complete"
         else:
-            state = "partial" if has_any_lot(benchling, prefix) else "none"
+            state = "partial" if has_any_lot(benchling, prefix, args.env) else "none"
         out[prefix] = {"state": state}
     if not args.no_cache:
         write_states(args.env, {p: entry(v["state"]) for p, v in out.items()})

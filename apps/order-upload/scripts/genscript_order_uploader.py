@@ -1,4 +1,4 @@
-"""Push a GenScript antibody order CSV to Benchling (test tenant only). Thin
+"""Push a GenScript antibody order CSV to Benchling. Thin
 orchestrator: genscript_parse.py builds the payloads, genscript_upload.py pushes.
 
 Run: python genscript_order_uploader.py --csv merged.csv --location loc_xxx
@@ -54,7 +54,8 @@ def _rows(*keys):
 
 def upload(benchling, df, tubes_by_row: list[list[dict]], registry_id: str,
            location_id: str, container_type_id: str, chunk_size: int,
-           assembly_type_ids: dict, sheet_blob_id: str, eng_blob_id: str | None) -> int:
+           assembly_type_ids: dict, sheet_blob_id: str, eng_blob_id: str | None,
+           env: str) -> int:
     """Build then push each of the 5 phases; `stage` tags which one failed on error.
     Recover a failed run with `scripts/dev-tools/cleanup_run.py --order-id`."""
     flat = flatten(tubes_by_row)
@@ -63,7 +64,7 @@ def upload(benchling, df, tubes_by_row: list[list[dict]], registry_id: str,
 
     try:
         log(stage := "LOCAL_BUILD", f"building sequence payloads for {n_rows} row(s) ...")
-        seq_payloads, counts = build_sequence_payloads(df, registry_id)
+        seq_payloads, counts = build_sequence_payloads(df, registry_id, env)
         offsets = seq_offsets(counts)
         seqs_per_row = ", ".join(f"{c}×{counts.count(c)}" for c in sorted(set(counts)))
         log(stage := "BENCHLING_PUSH", f"creating {len(seq_payloads)} GenScript Sequence "
@@ -75,8 +76,8 @@ def upload(benchling, df, tubes_by_row: list[list[dict]], registry_id: str,
 
         log(stage := "LOCAL_BUILD", f"building {n_rows} lot payload(s) ...")
         lot_payloads = build_lot_payloads(df, registry_id, sequence_ids, offsets,
-                                          tubes_by_row, assembly_type_ids, sheet_blob_id,
-                                          eng_blob_id)
+                                          tubes_by_row, assembly_type_ids, env,
+                                          sheet_blob_id, eng_blob_id)
         log(stage := "BENCHLING_PUSH", f"creating {n_rows} GenScript Lot entities "
             f"(chunks of {chunk_size}) ...")
         lot_entries = run_bulk(benchling, lot_payloads, "lots", chunk_size,
@@ -86,12 +87,13 @@ def upload(benchling, df, tubes_by_row: list[list[dict]], registry_id: str,
 
         order_prefix = str(df["Order ID"].iloc[0]).split("-", 1)[0]
         log(stage := "LOCAL_BUILD", "building box payloads ...")
-        box_payloads = build_box_payloads(tubes_by_row, order_prefix, location_id)
+        box_payloads = build_box_payloads(tubes_by_row, order_prefix, location_id, env)
         log(stage := "BENCHLING_PUSH", f"creating {len(box_payloads)} unique box(es) ...")
         box_id_by_key = create_boxes(benchling, box_payloads)
 
         log(stage := "LOCAL_BUILD", f"building {n_tubes} container payload(s) ...")
-        container_payloads = build_container_payloads(flat, df, box_id_by_key, container_type_id)
+        container_payloads = build_container_payloads(flat, df, box_id_by_key,
+                                                      container_type_id, env)
         log(stage := "BENCHLING_PUSH", f"creating {n_tubes} containers (chunks of {chunk_size}) ...")
         container_entries = run_bulk(benchling, container_payloads, "containers", chunk_size,
                                      submit=benchling.containers.bulk_create,
@@ -115,12 +117,11 @@ def upload(benchling, df, tubes_by_row: list[list[dict]], registry_id: str,
 
 def parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Push a GenScript antibody order CSV to Benchling (test tenant).",
+        description="Push a GenScript antibody order CSV to Benchling.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument("--csv", required=True)
-    p.add_argument("--env", choices=["test", "prod"], default="test",
-                   help="Prod has no GenScript schemas yet, so prod uploads will fail.")
+    p.add_argument("--env", choices=["test", "prod"], default="test")
     p.add_argument("--location", required=True, metavar="LOC_ID",
                    help="Benchling location id (loc_…) where new boxes will be placed.")
     p.add_argument("--batch-size", type=int, default=BATCH_SIZE_DEFAULT,
@@ -150,11 +151,12 @@ def main() -> int:
     container_type_id = resolve_dropdown(benchling, "Container Type", CONTAINER_TYPE)
     log("BENCHLING_PUSH", f"container type {CONTAINER_TYPE!r} -> {container_type_id}")
 
-    assert_field_type(benchling, SCHEMAS["lot"], ASSEMBLY_TYPE_FIELD, "text")
-    assert_field_type(benchling, SCHEMAS["lot"], ASSEMBLY_TYPE_LINK_FIELD, "entity_link")
-    assert_field_type(benchling, SCHEMAS["lot"], ORDER_SHEET_FIELD, "blob_link")
-    assert_field_type(benchling, SCHEMAS["lot"], CONSTRUCTION_ID_FIELD, "text")
-    assert_field_type(benchling, SCHEMAS["lot"], ENGINEERING_SHEET_FIELD, "blob_link")
+    lot_schema = SCHEMAS[args.env]["lot"]
+    assert_field_type(benchling, lot_schema, ASSEMBLY_TYPE_FIELD, "text")
+    assert_field_type(benchling, lot_schema, ASSEMBLY_TYPE_LINK_FIELD, "entity_link")
+    assert_field_type(benchling, lot_schema, ORDER_SHEET_FIELD, "blob_link")
+    assert_field_type(benchling, lot_schema, CONSTRUCTION_ID_FIELD, "text")
+    assert_field_type(benchling, lot_schema, ENGINEERING_SHEET_FIELD, "blob_link")
     assembly_type_ids = resolve_assembly_types(benchling, ASSEMBLY_TYPE_SCHEMAS[args.env])
     validate_assembly_types(df, assembly_type_ids)
     log("BENCHLING_PUSH", f"resolved {len(assembly_type_ids)} Assembly Type Construct entities")
@@ -170,7 +172,7 @@ def main() -> int:
 
     rc = upload(benchling, df, tubes_by_row, registry_id, args.location,
                 container_type_id, args.batch_size, assembly_type_ids, sheet_blob_id,
-                eng_blob_id)
+                eng_blob_id, args.env)
 
     # Final step of a successful push: stamp the completion marker. Status keys off this, so it
     # must be last — a failure in any earlier phase raises above and never reaches here. A marker

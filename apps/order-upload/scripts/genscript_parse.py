@@ -25,11 +25,18 @@ from benchling_sdk.models import (
 
 from benchling_io import log
 
-# sanaviatest schema IDs. Add a prod block once the schemas exist there.
+# Built per tenant, so the ids differ; the keys don't.
 SCHEMAS = {
-    "lot":       "ts_Ujb6ziH3Im",
-    "sequence":  "ts_kLIAY8MT8d",
-    "container": "consch_bSrmOjEq",
+    "test": {
+        "lot":       "ts_Ujb6ziH3Im",
+        "sequence":  "ts_kLIAY8MT8d",
+        "container": "consch_bSrmOjEq",
+    },
+    "prod": {
+        "lot":       "ts_pUkQgjYjba",
+        "sequence":  "ts_4pT5YLNksU",
+        "container": "consch_q5yXF8US",
+    },
 }
 
 # Built separately on each tenant, not cloned, so the ids differ.
@@ -48,9 +55,19 @@ NOT_AVAILABLE = "not_available"
 
 # Box schema per GenScript "Box Type"; an unknown type is rejected in validate_tubes.
 BOX_SCHEMAS = {
-    "9x9": "boxsch_rWBXv6rL",
-    "2x5": "boxsch_vFkhVowRki",
+    "test": {
+        "9x9": "boxsch_rWBXv6rL",
+        "2x5": "boxsch_vFkhVowRki",
+    },
+    "prod": {
+        "9x9": "boxsch_mk5IXuhG",
+        "2x5": "boxsch_LfLIzUNBDx",
+    },
 }
+
+# The CSV's box types, not Benchling ids — same on every tenant, so validation needs no env.
+BOX_TYPES = frozenset(BOX_SCHEMAS["test"])
+assert all(set(v) == BOX_TYPES for v in BOX_SCHEMAS.values())
 
 # "Box 23/23" is mislabeled 2x5 in the source but is really a 9x9 (holds 26 tubes).
 BOX_TYPE_OVERRIDES = {
@@ -278,10 +295,10 @@ def validate_tubes(tubes_by_row: list[list[dict]]) -> None:
     problems: list[str] = []
 
     # every box type resolves to a schema
-    unknown = sorted({t["btype"] for t in flat} - BOX_SCHEMAS.keys())
+    unknown = sorted({t["btype"] for t in flat} - BOX_TYPES)
     if unknown:
         problems.append(f"box type(s) with no schema in BOX_SCHEMAS: {unknown} "
-                        f"(known: {sorted(BOX_SCHEMAS)})")
+                        f"(known: {sorted(BOX_TYPES)})")
 
     # each box name maps to a single type
     type_by_box: dict[str, set] = {}
@@ -326,7 +343,7 @@ def validate_assembly_types(df: pd.DataFrame, assembly_type_ids: dict) -> None:
                  f"(known: {sorted(assembly_type_ids)})")
 
 
-def build_sequence_payloads(df: pd.DataFrame, registry_id: str) -> tuple[list, list[int]]:
+def build_sequence_payloads(df: pd.DataFrame, registry_id: str, env: str) -> tuple[list, list[int]]:
     """(flat payloads in row-major order, per-row seq counts). Each row yields 2..4
     payloads; a missing/empty `sequence N` column ends the row."""
     payloads: list = []
@@ -345,7 +362,7 @@ def build_sequence_payloads(df: pd.DataFrame, registry_id: str) -> tuple[list, l
                 name=name,
                 amino_acids=aa,
                 registry_id=registry_id,
-                schema_id=SCHEMAS["sequence"],
+                schema_id=SCHEMAS[env]["sequence"],
                 naming_strategy=NamingStrategy.NEW_IDS,
                 fields=make_fields({
                     "Order ID":        row["Order ID"],
@@ -376,13 +393,13 @@ def row_seq_ids(sequence_ids: list[str], offsets: list[int], i: int) -> list:
 
 def build_lot_payloads(df: pd.DataFrame, registry_id: str, sequence_ids: list[str],
                        offsets: list[int], tubes_by_row: list[list[dict]],
-                       assembly_type_ids: dict, sheet_blob_id: str | None = None,
+                       assembly_type_ids: dict, env: str, sheet_blob_id: str | None = None,
                        eng_blob_id: str | None = None) -> list:
     return [
         CustomEntityBulkCreate(
             name=lot_name_for(row),
             registry_id=registry_id,
-            schema_id=SCHEMAS["lot"],
+            schema_id=SCHEMAS[env]["lot"],
             naming_strategy=NamingStrategy.NEW_IDS,
             fields=make_fields(lot_fields_for(
                 row, row_seq_ids(sequence_ids, offsets, i), tubes_by_row[i],
@@ -393,7 +410,7 @@ def build_lot_payloads(df: pd.DataFrame, registry_id: str, sequence_ids: list[st
 
 
 def build_box_payloads(tubes_by_row: list[list[dict]], order_id_prefix: str,
-                       location_id: str) -> list:
+                       location_id: str, env: str) -> list:
     """One (box_key, BoxCreate) per unique box, first-seen order. Name/schema/location
     are baked in here so the push side needs no schema knowledge."""
     seen: set = set()
@@ -405,18 +422,18 @@ def build_box_payloads(tubes_by_row: list[list[dict]], order_id_prefix: str,
         seen.add(key)
         out.append((key, BoxCreate(
             name=box_full_name(tube, order_id_prefix),
-            schema_id=BOX_SCHEMAS[tube["btype"]],
+            schema_id=BOX_SCHEMAS[env][tube["btype"]],
             parent_storage_id=location_id,
         )))
     return out
 
 
 def build_container_payloads(flat: list[tuple[int, dict]], df: pd.DataFrame,
-                             box_id_by_key: dict, container_type_id: str) -> list:
+                             box_id_by_key: dict, container_type_id: str, env: str) -> list:
     return [
         ContainerCreate(
             name=lot_name_for(df.iloc[i]),
-            schema_id=SCHEMAS["container"],
+            schema_id=SCHEMAS[env]["container"],
             parent_storage_id=f"{box_id_by_key[box_key(t)]}:{t['pos']}",
             fields=make_fields({"LL1": "", "LL2": "", "Type": container_type_id}),
         )

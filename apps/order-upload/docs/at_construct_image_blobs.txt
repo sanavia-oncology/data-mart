@@ -1,0 +1,12 @@
+# prod Assembly Type Construct: the per-construct PNGs that PDF 13b2ab2a-f5d9-478f-b238-7ceb1beb5077 replaced in Construct Image; restore = set that field to <blob id> on <entity id>
+name   entity id          registry id  original blob id                       original filename
+AT00   bfi_Mfe3RBxHev     AT00         e396dbc7-5966-42a8-844f-67e81fb4357d   AT00_IgG.png
+AT01   bfi_2mqLFkMvBW     AT01         55dda7a3-79c4-463b-99e5-2b1ca7278745   AT01_HetIgG.png
+AT02   bfi_FAAPBf3yzQ     AT02         be5a79cd-5860-4dd6-b07f-ab444b622d92   AT02_scFv-Fc-22.png
+AT03   bfi_QCGsRrCyqf     AT03         1f39df12-5d79-42cc-a376-e3a2fa04322c   AT03_Fc-scFv-22.png
+AT04   bfi_C8JlPUv8YF     AT04         f9039a5b-9462-4397-9d28-cd41c6f00e3f   AT04_XMab-11.png
+AT05   bfi_tb9eAdVFyC     AT05         ac22b40c-979d-4058-a4df-ec2eeb7a0a40   AT05_Fc-LC-scFv-22.png
+AT06   bfi_9Os1ZQRxCe     AT06         acfc8bce-6552-48b8-a4f7-a2d625c2b784   AT06_scFv-Fc-22_aLIHC.png
+AT07   bfi_RCIojArctr     AT07         55c58934-d4b2-4dd5-9a06-02c100b44a57   AT07_scFv-Fc-22_aLILC.png
+AT08   bfi_9mtVygBs8k     AT08         c7c4ae7a-845b-416c-8b0e-d4af1cb2b2c7   AT08_scFv-Fc-22_bMLHC.png
+AT09   bfi_kZfn5Trpwh     AT09         6e9bd7c5-74c8-4f89-b5b5-a67571889079   AT09_scFv-Fc-22_bMLLC.png

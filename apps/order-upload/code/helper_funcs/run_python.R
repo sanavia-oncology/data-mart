@@ -38,6 +38,21 @@ py_status <- function(ids, cfg) {
 }
 
 py_status_async    <- function(ids, cfg) .py_async(.status_args(ids, cfg), cfg)
+
+# The connection pill. write = TRUE also proves the key can push, not just read.
+py_ping_async <- function(cfg, write = TRUE)
+    .py_async(c(.script(cfg, "genscript_ping.py"), "--env", cfg$env,
+                if (isTRUE(write)) "--write" else NULL), cfg)
+
+py_ping_collect <- function(pp) {
+    res <- tryCatch({
+        txt <- paste(readLines(pp$outfile, warn = FALSE), collapse = "")
+        if (nzchar(txt)) jsonlite::fromJSON(txt, simplifyVector = TRUE) else NULL
+    }, error = function(e) NULL)
+    tryCatch(unlink(pp$outfile), error = function(e) NULL)
+    if (is.null(res) || is.null(res$ok)) return(list(ok = FALSE, reason = "check did not run"))
+    list(ok = isTRUE(res$ok), reason = res$reason %||% "")
+}
 py_locations_async <- function(cfg) .py_async(c(.script(cfg, "genscript_locations.py"), "--env", cfg$env), cfg)
 
 py_locations_collect <- function(lp) {

@@ -26,6 +26,7 @@ server <- function(input, output, session) {
     sync_fail    <- reactiveVal(NULL)   # why, in words the sidebar can show; NULL while sync_ok
     run_rv       <- reactiveValues(running = FALSE, order = NULL, kind = NULL, started = NULL, location = NULL)
     current_proc <- NULL   # plain var: must survive the poll's invalidations
+    ping_proc    <- NULL   # plain var: the async key check behind the connection pill
     status_proc  <- NULL   # plain var: the async status-sync process, as list(proc, outfile)
     loc_proc     <- NULL   # plain var: the async location fetch, same shape
 
@@ -58,15 +59,67 @@ server <- function(input, output, session) {
 
     # Backgrounded: fetching these inline held up the session function, and so the first paint.
     locations_rv <- reactiveVal(NULL)
-    if (!embed) loc_proc <- tryCatch(py_locations_async(ecfg()),
-                                     error = function(e) { launch_error("location list", e); NULL })
+    loc_tick     <- reactiveVal(0)
+    ping_rv      <- reactiveVal(NULL)
+    ping_tick    <- reactiveVal(0)
+
+    start_locations <- function() {
+        if (embed) return(invisible(NULL))
+        if (!is.null(loc_proc)) {
+            tryCatch(if (loc_proc$proc$is_alive()) loc_proc$proc$kill(), error = function(e) NULL)
+            tryCatch(unlink(loc_proc$outfile), error = function(e) NULL)
+        }
+        loc_proc <<- tryCatch(py_locations_async(ecfg()),
+                              error = function(e) { launch_error("location list", e); NULL })
+        loc_tick(isolate(loc_tick()) + 1)
+    }
+
+    # Never killed: a kill between the probe's create and its archive strands a folder on the tenant.
+    start_ping <- function() {
+        if (embed) return(invisible(NULL))
+        ping_rv(NULL)
+        if (!is.null(ping_proc) && ping_proc$proc$is_alive()) return(invisible(NULL))
+        ping_proc <<- tryCatch(c(py_ping_async(ecfg()), list(env = isolate(env_rv()))),
+                               error = function(e) { ping_rv(list(ok = FALSE, reason = "check could not start")); NULL })
+        ping_tick(isolate(ping_tick()) + 1)
+    }
+
     observe({
+        ping_tick()
+        pp <- ping_proc
+        if (is.null(pp)) return()
+        if (pp$proc$is_alive()) { invalidateLater(400); return() }
+        ping_proc <<- NULL
+        res <- py_ping_collect(pp)
+        if (!identical(pp$env, isolate(env_rv()))) { start_ping(); return() }   # answered for the tenant we left
+        ping_rv(res)
+    })
+
+    output$conn_status <- renderUI({
+        p <- ping_rv()
+        dot <- function(col) tags$span(style = sprintf(
+            "display:inline-block;width:8px;height:8px;border-radius:50%%;background:%s;margin-right:6px;", col))
+        wrap <- function(...) tags$div(style = "font-size: 12px; margin-top: 6px;", ...)
+        if (is.null(p))
+            return(wrap(dot("#b0b6be"), tags$span("Checking\u2026", class = "text-secondary")))
+        if (isTRUE(p$ok))
+            return(wrap(dot("#1a7f37"), tags$span("Connected", class = "text-secondary")))
+        wrap(dot("#d1242f"),
+             tags$span(sprintf("Offline \u2014 %s", p$reason %||% "check failed"), class = "text-danger"))
+    })
+    outputOptions(output, "conn_status", suspendWhenHidden = FALSE)
+
+    observe({
+        loc_tick()
         lp <- loc_proc
         if (is.null(lp)) return()
         if (lp$proc$is_alive()) { invalidateLater(400); return() }
         loc_proc <<- NULL
         locations_rv(py_locations_collect(lp))
     })
+
+    start_locations()
+    start_ping()
     observe({
         locs <- locations_rv()
         if (is.null(locs)) return()
@@ -83,14 +136,18 @@ server <- function(input, output, session) {
         if (!is.null(p)) tryCatch(append_log(p$read_output_lines()), error = function(e) invisible())
     }
 
+    cancel_status <- function() {
+        if (is.null(status_proc)) return(invisible(NULL))
+        tryCatch(if (status_proc$proc$is_alive()) status_proc$proc$kill(), error = function(e) NULL)
+        tryCatch(unlink(status_proc$outfile), error = function(e) NULL)
+        status_proc <<- NULL
+        status_busy(FALSE)
+    }
+
     # Background sync; the poll observe below folds the result in. Nothing waits on it.
     launch_status <- function(ids) {
-        if (!is.null(status_proc)) {                      # cancel any in-flight sync
-            tryCatch(if (status_proc$proc$is_alive()) status_proc$proc$kill(), error = function(e) NULL)
-            tryCatch(unlink(status_proc$outfile), error = function(e) NULL)
-            status_proc <<- NULL
-        }
-        if (!length(ids)) { status_busy(FALSE); return() }
+        cancel_status()
+        if (!length(ids)) return()
         status_proc <<- tryCatch(py_status_async(ids, ecfg()),
                                  error = function(e) { sync_fail(launch_error("Benchling check", e)); NULL })
         if (is.null(status_proc)) sync_ok(FALSE)
@@ -135,8 +192,6 @@ server <- function(input, output, session) {
         orders_rv(df)
         selected_rv(intersect(selected_rv(), df$order_id))
         apply_states(read_status_cache(ecfg()))
-        # Not from the DT's initComplete: an unchanged order set doesn't re-render, so it'd stick.
-        session$sendCustomMessage("showEl", list(id = "orders_spinner", show = FALSE))
         df
     }
     # The run stamped the mirror on its way out, so this is a file read; live check only if it didn't.
@@ -150,6 +205,7 @@ server <- function(input, output, session) {
     # Refresh is the only thing that talks to Benchling. Startup reads disk and stops there.
     observeEvent(input$refresh, {
         if (isTRUE(run_rv$running) || isTRUE(status_busy())) return()
+        start_ping()
         df <- load_orders()
         launch_status(if (nrow(df)) df$order_id else character(0))
     })
@@ -255,11 +311,10 @@ server <- function(input, output, session) {
 
     # Render once per order-set; filter and status changes go through the proxy instead, so
     # the search box and the current page survive them.
-    hide_spinner <- DT::JS("function(s){var el=document.getElementById('orders_spinner'); if(el) el.style.display='none';}")
     output$orders_table = DT::renderDataTable({
         if (is.null(orders_rv()) || !nrow(orders_rv()))
             return(DT::datatable(data.frame(Message = "No orders found — set the orders folder in Set App Credentials."),
-                                 rownames = FALSE, options = list(dom = "t", paging = FALSE, initComplete = hide_spinner)))
+                                 rownames = FALSE, options = list(dom = "t", paging = FALSE)))
         # OS-style selection via the Select extension: single click = one row, Cmd/Ctrl = toggle,
         # Shift = range. DT's own selection is off; we push the selected order ids to Shiny ourselves.
         # drawCallback re-applies the selection after every redraw (e.g. the status replaceData),
@@ -271,7 +326,6 @@ server <- function(input, output, session) {
                        dom = "tpf",
                        columnDefs = list(
                            list(className = 'dt-nowrap', targets = '_all')),
-                       initComplete = hide_spinner,
                        select = list(style = "os", items = "row"),
                        drawCallback = DT::JS(
                            "function() {",
@@ -456,9 +510,6 @@ server <- function(input, output, session) {
             title = if (identical(to, "prod")) "Switch to PRODUCTION?" else "Switch back to test?",
             tags$p(sprintf("Uploads, clean-ups and status checks will run against the %s tenant.",
                            if (identical(to, "prod")) "production" else "test")),
-            if (identical(to, "prod"))
-                tags$p("Production has no GenScript schemas yet, so uploads there will fail.",
-                       class = "text-secondary", style = "font-size: 13px;"),
             footer = tagList(actionButton("env_cancel", "Cancel"),
                              actionButton("env_confirm", "Switch",
                                           class = if (identical(to, "prod")) "btn-danger" else "btn-primary")),
@@ -475,11 +526,18 @@ server <- function(input, output, session) {
     observeEvent(input$env_confirm, {
         removeModal()
         if (isTRUE(run_rv$running)) { reset_env_radio(); return() }
+        cancel_status()              # the radio isn't disabled mid-sync; a late answer would land in the wrong tenant
         env_rv(input$env_choice)
         status_rv(list())            # the mirror is per-tenant; drop what the old one said
+        sync_ok(TRUE); sync_fail(NULL)   # so is a failed sync: the new tenant starts trusted, as at startup
+        locations_rv(NULL)           # and so are the locations: clear before the new list lands
+        updateSelectizeInput(session, "upload_location", choices = character(0), selected = "")
+        start_locations()
+        start_ping()
         df <- load_orders()
-        # Still checks here: switching tenants is deliberate, and prod is where stale reads hurt.
-        launch_status(if (nrow(df)) df$order_id else character(0))
+        # No mirror here yet -> every row reads "No", which invites a duplicate push; check once.
+        if (!length(read_status_cache(ecfg())))
+            launch_status(if (nrow(df)) df$order_id else character(0))
         showNotification(sprintf("Now using the %s tenant.", toupper(env_rv())), type = "message")
     }, ignoreInit = TRUE)
 
@@ -606,5 +664,6 @@ server <- function(input, output, session) {
         if (!is.null(current_proc) && current_proc$is_alive()) tryCatch(current_proc$kill_tree(), error = function(e) NULL)
         if (!is.null(status_proc) && status_proc$proc$is_alive()) tryCatch(status_proc$proc$kill(), error = function(e) NULL)
         if (!is.null(loc_proc) && loc_proc$proc$is_alive()) tryCatch(loc_proc$proc$kill(), error = function(e) NULL)
+        if (!is.null(ping_proc) && ping_proc$proc$is_alive()) tryCatch(ping_proc$proc$kill(), error = function(e) NULL)
     })
 }

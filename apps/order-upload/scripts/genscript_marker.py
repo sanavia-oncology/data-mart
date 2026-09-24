@@ -13,6 +13,7 @@ from benchling_sdk.benchling import Benchling
 from benchling_sdk.models import FolderCreate, FoldersArchiveReason
 
 MARKER_FOLDER_NAME = "GenScript Upload Markers"
+PROBE_PREFIX = "__perm_probe_"
 
 _resolved: dict[str, str] = {}
 
@@ -50,7 +51,8 @@ def list_markers(benchling: Benchling, env: str) -> set[str]:
     order."""
     parent = marker_parent_id(benchling, env)
     return {f.name for page in benchling.folders.list(parent_folder_id=parent) for f in page
-            if getattr(f, "archive_record", None) is None and f.name}
+            if getattr(f, "archive_record", None) is None and f.name
+            and not f.name.startswith(PROBE_PREFIX)}
 
 
 def write_marker(benchling: Benchling, prefix: str, env: str) -> str:

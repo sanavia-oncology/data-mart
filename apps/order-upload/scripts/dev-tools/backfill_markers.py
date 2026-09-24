@@ -43,8 +43,8 @@ def main() -> int:
             continue
         df = read_csv(Path(csv.strip()))
         exp_lots, exp_tubes = len(df), sum(len(t) for t in build_tubes(df))
-        lots = _count(b.custom_entities.list(schema_id=SCHEMAS["lot"], name_includes=prefix), prefix)
-        conts = _count(b.containers.list(schema_id=SCHEMAS["container"], name_includes=prefix), prefix)
+        lots = _count(b.custom_entities.list(schema_id=SCHEMAS[args.env]["lot"], name_includes=prefix), prefix)
+        conts = _count(b.containers.list(schema_id=SCHEMAS[args.env]["container"], name_includes=prefix), prefix)
         if lots >= exp_lots and conts >= exp_tubes:
             mid = write_marker(b, prefix, args.env)
             print(f"{prefix}: complete ({lots}/{exp_lots} lots, {conts}/{exp_tubes} tubes) -> marked {mid}")

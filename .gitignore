@@ -43,3 +43,13 @@ apps/order-upload/docs/genscript_uploader.pdf
 
 # OS
 .DS_Store
+
+# Benchling config exports — whole-tenant schema dumps, never in the repo
+*MIGRATION-PACKAGE*.dat
+*.dat
+EntitySchema.json
+migration-diff-*.csv
+
+# Playwright drops screenshots at the repo root
+/*.png
+!/upload-progress.png
