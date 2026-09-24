@@ -7,9 +7,8 @@ server <- function(input, output, session) {
     # The iframed creds form has no table and no Benchling work — skip everything that serves them.
     embed <- identical(parseQueryString(isolate(session$clientData$url_search))$embed, "creds")
 
-    # Tenant the app is pointed at. Session-scoped and always starts at test — a reload
-    # never leaves you silently in prod. ecfg() is what every python call must use.
-    env_rv <- reactiveVal("test")
+    # Session-scoped: a switch never outlives the page. ecfg() is what every python call must use.
+    env_rv <- reactiveVal(cfg$env)
     # cfg is captured once, so the creds form updates this instead of needing a restart.
     orders_dir_rv <- reactiveVal(cfg$orders_dir)
     ecfg   <- function() modifyList(cfg, list(env = isolate(env_rv()),
@@ -493,6 +492,7 @@ server <- function(input, output, session) {
     }, ignoreInit = TRUE)
 
     reset_env_radio <- function() updateRadioButtons(session, "env_choice", selected = env_rv())
+    if (!embed) isolate(reset_env_radio())
 
     observeEvent(input$env_choice, {
         to <- input$env_choice

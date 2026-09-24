@@ -56,7 +56,7 @@ app_card <- tags$div(
                      tags$div(class = "env-radio", style = "margin-top: 10px;",
                               radioButtons("env_choice", "Tenant",
                                            choices = c(Test = "test", Production = "prod"),
-                                           selected = "test", inline = TRUE)),
+                                           selected = "prod", inline = TRUE)),
                      uiOutput("conn_status"),
                      tags$div(actionLink("creds_btn", "Set App Credentials", class = "cleanup-link")))
         ),

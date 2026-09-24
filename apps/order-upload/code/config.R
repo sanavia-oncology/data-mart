@@ -57,6 +57,6 @@ build_cfg <- function(app_dir) {
         scripts_dir = file.path(app_dir, "scripts"),
         logs_dir    = file.path(app_dir, "logs"),          # error logs + the status mirror
         py          = py,
-        env         = getv("GENSCRIPT_ENV", "test")
+        env         = getv("GENSCRIPT_ENV", "prod")
     )
 }
