@@ -138,7 +138,7 @@ LOT_FIELDS: list[tuple[str, str, callable, bool]] = [
     ("Purity by SEC-HPLC(%)",         "Purity by SEC-HPLC(%)",           to_float,      True),
     ("Purity by CE-SDS under NR(%)",  "Purity by CE-SDS under NR(%)",    to_float,      False),
     ("Purity by SDS-PAGE under NR(%)","Purity by SDS-PAGE under NR(%)",  to_float,      False),
-    ("Endotoxin Level(EU/mg)",        "Endotoxin Level(EU/mg)",          to_float,      True),
+    ("Endotoxin Level(EU/mg)",        "Endotoxin Level(EU/mg)",          to_float,      False),
     ("Endotoxin Level(EU/ml)",        "Endotoxin Level(EU/ml)",          to_float,      False),
     ("Total(mg)",                     "Total(mg)",                       to_float,      True),
     ("Size-Volume(ml)",               "Size-Volume(ml)",                 to_float,      False),
