@@ -41,6 +41,7 @@ from genscript_upload import (
     entity_field,
     resolve_assembly_types,
     resolve_dropdown,
+    resolve_sequences,
     run_bulk,
 )
 
@@ -55,7 +56,7 @@ def _rows(*keys):
 def upload(benchling, df, tubes_by_row: list[list[dict]], registry_id: str,
            location_id: str, container_type_id: str, chunk_size: int,
            assembly_type_ids: dict, sheet_blob_id: str, eng_blob_id: str | None,
-           env: str) -> int:
+           env: str, reuse_ids: dict) -> int:
     """Build then push each of the 5 phases; `stage` tags which one failed on error.
     Recover a failed run with `scripts/dev-tools/cleanup_run.py --order-id`."""
     flat = flatten(tubes_by_row)
@@ -66,13 +67,16 @@ def upload(benchling, df, tubes_by_row: list[list[dict]], registry_id: str,
         log(stage := "LOCAL_BUILD", f"building sequence payloads for {n_rows} row(s) ...")
         seq_payloads, counts = build_sequence_payloads(df, registry_id, env)
         offsets = seq_offsets(counts)
+        new_payloads = [p for p in seq_payloads if p.name not in reuse_ids]
         seqs_per_row = ", ".join(f"{c}×{counts.count(c)}" for c in sorted(set(counts)))
-        log(stage := "BENCHLING_PUSH", f"creating {len(seq_payloads)} GenScript Sequence "
-            f"entities ({seqs_per_row} per row, chunks of {chunk_size}) ...")
-        seq_entries = run_bulk(benchling, seq_payloads, "sequences", chunk_size,
+        log(stage := "BENCHLING_PUSH", f"reusing {len(seq_payloads) - len(new_payloads)} "
+            f"existing, creating {len(new_payloads)} GenScript Sequence entities "
+            f"({seqs_per_row} per row, chunks of {chunk_size}) ...")
+        seq_entries = run_bulk(benchling, new_payloads, "sequences", chunk_size,
                                submit=benchling.aa_sequences.bulk_create,
                                extract=_rows("aaSequences", "aa_sequences"))
-        sequence_ids = [entity_field(e, "id") for e in seq_entries]
+        created = iter(entity_field(e, "id") for e in seq_entries)
+        sequence_ids = [reuse_ids.get(p.name) or next(created) for p in seq_payloads]
 
         log(stage := "LOCAL_BUILD", f"building {n_rows} lot payload(s) ...")
         lot_payloads = build_lot_payloads(df, registry_id, sequence_ids, offsets,
@@ -160,6 +164,8 @@ def main() -> int:
     assembly_type_ids = resolve_assembly_types(benchling, ASSEMBLY_TYPE_SCHEMAS[args.env])
     validate_assembly_types(df, assembly_type_ids)
     log("BENCHLING_PUSH", f"resolved {len(assembly_type_ids)} Assembly Type Construct entities")
+    seq_payloads, _ = build_sequence_payloads(df, registry_id, args.env)
+    reuse_ids = resolve_sequences(benchling, SCHEMAS[args.env]["sequence"], seq_payloads)
 
     sheet_blob_id = benchling.blobs.create_from_file(csv_path, mime_type="text/csv").id
     log("BENCHLING_PUSH", f"uploaded order sheet {csv_path.name} -> {sheet_blob_id}")
@@ -172,7 +178,7 @@ def main() -> int:
 
     rc = upload(benchling, df, tubes_by_row, registry_id, args.location,
                 container_type_id, args.batch_size, assembly_type_ids, sheet_blob_id,
-                eng_blob_id, args.env)
+                eng_blob_id, args.env, reuse_ids)
 
     # Final step of a successful push: stamp the completion marker. Status keys off this, so it
     # must be last — a failure in any earlier phase raises above and never reaches here. A marker

@@ -230,11 +230,11 @@
         <div class="bd"><code>resolve_dropdown</code>, <code>create_boxes</code>, <code>run_bulk</code> (chunk → submit → wait → check), <code>entity_field</code>.</div>
       </div>
     </div>
-    <div class="midjoin">the pusher builds on · the parser only borrows <code>log()</code></div>
+    <div class="midjoin">the pusher builds on · the parser never imports it</div>
     <div class="band" style="border-left:3px solid var(--io)">
       <div class="bt">Shared helpers · bottom layer</div>
       <div class="bn"><code>benchling_io.py</code></div>
-      <div class="bd"><strong>Network</strong> (pusher only): <code>connect</code> (120&nbsp;s timeout), <code>wait_for_task</code> (poll + retry). <strong>Pure utilities</strong>: <code>chunked</code>, and <code>log</code> — the parser's <em>only</em> tie to this file, used just for its override notice, so the parser stays network-free.</div>
+      <div class="bd"><strong>Network</strong> (pusher only): <code>connect</code> (120&nbsp;s timeout), <code>wait_for_task</code> (poll + retry). <strong>Pure utilities</strong>: <code>chunked</code> and <code>log</code>.</div>
     </div>
     <div class="aside"><b>dev-tools/cleanup_run.py</b> — undoes a run; reuses <code class="i">benchling_io</code> + <code class="i">genscript_parse.SCHEMAS</code> (adds the repo root to <code class="i">sys.path</code>). See <a href="commands.md">commands.md</a>.</div>
   </div>
@@ -270,7 +270,7 @@
 
   <!-- ============ DEEP DIVE: PARSER ============ -->
   <h2 id="parser"><span class="n">5</span>Inside the parser — <code>genscript_parse.py</code></h2>
-  <p class="lede">Pure functions: CSV → Benchling payloads, no network. (Its one <code class="i">benchling_io</code> import is just the <code class="i">log</code> helper.) Five stages:</p>
+  <p class="lede">Pure functions: CSV → Benchling payloads, no network. Five stages:</p>
 
   <div class="deep">
     <h3>a · Reading the CSV — <code>read_csv</code></h3>
@@ -284,14 +284,13 @@ missing = [c <span class="k">for</span> c in REQUIRED_CSV_COLUMNS <span class="k
 
   <div class="deep">
     <h3>b · Exploding a row into tubes — <code>build_tubes</code></h3>
-    <p>The four per-tube columns are <code class="i">|</code>-delimited and column-parallel: the k-th slice of each describes tube&nbsp;k. Guards reject ragged rows; overrides fix known bad source data; positions are normalised.</p>
+    <p>The four per-tube columns are <code class="i">|</code>-delimited and column-parallel: the k-th slice of each describes tube&nbsp;k. Guards reject ragged rows; positions are normalised.</p>
     <pre>boxes = <span class="fn">split_pipe</span>(row[<span class="s">"Box Name"</span>]); types = <span class="fn">split_pipe</span>(row[<span class="s">"Box Type"</span>])
 poss  = <span class="fn">split_pipe</span>(row[<span class="s">"Position"</span>]); vols  = <span class="fn">split_pipe</span>(row[<span class="s">"Volume(ml)"</span>])
 <span class="k">if</span> len({len(boxes), len(types), len(poss), len(vols)}) != <span class="s">1</span>:
     sys.exit(<span class="s">"… per-tube columns have unequal lengths"</span>)   <span class="c"># ragged guard</span>
 <span class="k">for</span> k in range(len(boxes)):
-    btype = BOX_TYPE_OVERRIDES.get(boxes[k], types[k])   <span class="c"># "Box 23/23" → 9x9</span>
-    tubes.append({<span class="s">"box"</span>: boxes[k], <span class="s">"btype"</span>: btype,
+    tubes.append({<span class="s">"box"</span>: boxes[k], <span class="s">"btype"</span>: types[k],
                   <span class="s">"pos"</span>: <span class="fn">normalize_pos</span>(poss[k]),        <span class="c"># lowercase, J→i</span>
                   <span class="s">"vol"</span>: vols[k], <span class="s">"merge"</span>: row[<span class="s">"Merge Date"</span>]})</pre>
     <p><code class="i">"B1 | B1 | B2"</code> + <code class="i">"A1 | A2 | C8"</code> → three tube dicts. <code class="i">normalize_pos</code> rewrites <code class="i">J→i</code> because GenScript labels a 9×9's 9th row "J" (skipping "I").</p>
@@ -401,7 +400,7 @@ LOT_FIELDS = [
 
   <!-- ============ DEEP DIVE: SHARED IO ============ -->
   <h2 id="io"><span class="n">7</span>Inside shared helpers — <code>benchling_io.py</code></h2>
-  <p class="lede">Network plumbing (<code>connect</code>, <code>wait_for_task</code> — pusher only) plus two pure helpers (<code>chunked</code>, <code>log</code>). <code>log</code> is the parser's only reason to touch this file.</p>
+  <p class="lede">Network plumbing (<code>connect</code>, <code>wait_for_task</code> — pusher only) plus two pure helpers (<code>chunked</code>, <code>log</code>).</p>
 
   <div class="deep">
     <h3>a · <code>connect</code> — the client, with a long timeout</h3>

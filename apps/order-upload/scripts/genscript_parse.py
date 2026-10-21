@@ -23,8 +23,6 @@ from benchling_sdk.models import (
     NamingStrategy,
 )
 
-from benchling_io import log
-
 # Built per tenant, so the ids differ; the keys don't.
 SCHEMAS = {
     "test": {
@@ -68,11 +66,6 @@ BOX_SCHEMAS = {
 # The CSV's box types, not Benchling ids — same on every tenant, so validation needs no env.
 BOX_TYPES = frozenset(BOX_SCHEMAS["test"])
 assert all(set(v) == BOX_TYPES for v in BOX_SCHEMAS.values())
-
-# "Box 23/23" is mislabeled 2x5 in the source but is really a 9x9 (holds 26 tubes).
-BOX_TYPE_OVERRIDES = {
-    "Box 23/23": "9x9",
-}
 
 # Lowercase is deliberate — must match the tenant's "Reagent Supplier" dropdown option.
 SUPPLIER = "Genscript"
@@ -250,9 +243,8 @@ def make_fields(d: dict):
 
 def build_tubes(df: pd.DataFrame) -> list[list[dict]]:
     """Per row, explode the ` | `-delimited per-tube columns into {box, btype, pos,
-    vol, merge} dicts. Applies BOX_TYPE_OVERRIDES; exits on ragged rows."""
+    vol, merge} dicts. Exits on ragged rows."""
     out: list[list[dict]] = []
-    overridden = 0
     for i, row in df.iterrows():
         boxes = split_pipe(row["Box Name"])
         types = split_pipe(row["Box Type"])
@@ -267,20 +259,14 @@ def build_tubes(df: pd.DataFrame) -> list[list[dict]]:
             sys.exit(f"[LOCAL_PARSE] ERROR: row {i} (Lot {row['Lot No']!r}) has no tube/box data")
         tubes = []
         for k in range(len(boxes)):
-            btype = BOX_TYPE_OVERRIDES.get(boxes[k], types[k])
-            if btype != types[k]:
-                overridden += 1
             tubes.append({
                 "box":   boxes[k],
-                "btype": btype,
+                "btype": types[k],
                 "pos":   normalize_pos(poss[k]),
                 "vol":   vols[k],
                 "merge": row["merge_date"],
             })
         out.append(tubes)
-    if overridden:
-        log("LOCAL_PARSE", f"applied {overridden} box-type override(s) {BOX_TYPE_OVERRIDES} "
-            f"to fix mislabeled source box(es)")
     return out
 
 
@@ -354,7 +340,8 @@ def build_sequence_payloads(df: pd.DataFrame, registry_id: str, env: str) -> tup
             col = f"sequence {n}"
             if col not in row.index:
                 break
-            aa = (row[col] or "").strip()
+            # GenScript lowercases a substituted residue; case carries no meaning.
+            aa = (row[col] or "").strip().upper()
             if not aa:
                 break
             name = seq_name_for(row, n)

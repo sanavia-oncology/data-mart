@@ -85,30 +85,11 @@ def _list_all(list_fn, label: str) -> list:
     return retry(lambda: list(_iter_items(list_fn())), label)
 
 
-def _seq_link_ids(lot) -> list[str]:
-    """The Sequence1..4 entity ids linked on a GenScript Lot — the inverse of how
-    the uploader stamped them."""
-    ids: list[str] = []
-    fields = lot.fields
-    if fields is None:
-        return ids
-    for n in (1, 2, 3, 4):
-        f = fields.get(f"Sequence{n}")
-        if f is None:
-            continue
-        v = f.value
-        if isinstance(v, list):          # multi-link, just in case
-            ids.extend(x for x in v if x)
-        elif v:
-            ids.append(v)
-    return ids
-
-
 def discover_ids(benchling: Benchling, order_id: str, env: str
                  ) -> tuple[list[str], list[str], list[str], list[str]]:
     """Rediscover (seq_ids, lot_ids, container_ids, box_ids) for an order-id prefix.
-    Lots/boxes/containers match the prefix in their names; sequences via their lots'
-    links + an "Order ID"-field scan (catches orphans from a failed run)."""
+    Lots/boxes/containers match the prefix in their names; sequences only via an
+    "Order ID"-field scan, never lot links, which can point at another order's reused sequence."""
     prefix = order_id.strip()
 
     print(f"  Lots: schema {SCHEMAS[env]['lot']}, name contains {prefix!r} ...", flush=True)
@@ -120,10 +101,8 @@ def discover_ids(benchling: Benchling, order_id: str, env: str
         if not (_name_held(lot) and lot_name_has_order(lot.name or "", prefix)):
             continue
         lot_ids.setdefault(lot.id, lot.name or "")
-        for sid in _seq_link_ids(lot):
-            seq_ids.setdefault(sid, None)
 
-    # Orphaned sequences (no Lot links them): match the "Order ID" field, "<prefix>-<n>".
+    # Sequences: match the "Order ID" field, "<prefix>-<n>".
     print(f"  Sequences: scanning schema for Order ID {prefix!r} ...", flush=True)
     for seq in _list_all(lambda: benchling.aa_sequences.list(
             schema_id=SCHEMAS[env]["sequence"], page_size=100,

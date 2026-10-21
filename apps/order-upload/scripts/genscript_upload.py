@@ -52,6 +52,26 @@ def resolve_assembly_types(benchling: Benchling, schema_id: str) -> dict:
     return out
 
 
+def resolve_sequences(benchling: Benchling, schema_id: str, payloads: list) -> dict:
+    """{name: id} of active sequences already holding a planned name, linked instead of
+    created. Exits before any write, naming every one whose amino acids differ."""
+    names = sorted({p.name for p in payloads})
+    found: dict = {}
+    for chunk in chunked(names, 100):  # Benchling caps names.anyOf at 100
+        for page in benchling.aa_sequences.list(schema_id=schema_id,
+                                                names_any_of_case_sensitive=chunk):
+            for s in page:
+                # names.anyOf also matches registry ids
+                if s.archive_record is None and s.name in chunk:
+                    found[s.name] = s
+    conflicts = sorted({p.name for p in payloads if p.name in found
+                        and found[p.name].amino_acids.upper() != p.amino_acids.upper()})
+    if conflicts:
+        sys.exit(f"[BENCHLING_PUSH] ERROR: {len(conflicts)} sequence name(s) already on the "
+                 f"tenant with different amino acids: {conflicts}")
+    return {name: s.id for name, s in found.items()}
+
+
 def create_boxes(benchling: Benchling, box_payloads: list) -> dict:
     """Create each pre-built [(box_key, BoxCreate)] -> {box_key: box_id}."""
     out: dict = {}
