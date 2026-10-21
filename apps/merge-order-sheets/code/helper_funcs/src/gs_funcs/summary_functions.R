@@ -76,12 +76,15 @@ make_front_page_table = function(order_files_paths) {
     for (order_folder in names(order_files_paths)) {
         fls = order_files_paths[[order_folder]]
         
-        dat = read.csv(fls[grep("merged-sheets.csv$", fls)], 
+        mosp = fls[grep("merged-sheets.csv$", fls)]
+        mosp_date = sub(".*([0-9]{4}-[0-9]{2}-[0-9]{2})-merged-sheets.csv$", "\\1", mosp)
+        
+        dat = read.csv(mosp[rev(order(mosp_date))[1]], 
                        header = TRUE,
                        check.names = FALSE,
                        stringsAsFactors = FALSE)
         
-        location_map = fls[grep("Summary", fls)]
+        location_map = fls[grep("Summary", fls)][1]
         location_map = sapply(strsplit(location_map, "Summary"), "[[", 2)
         location_map = gsub("[A-Z]|[a-z]", "", location_map)
         location_map = gsub("_|\\.", "", location_map)

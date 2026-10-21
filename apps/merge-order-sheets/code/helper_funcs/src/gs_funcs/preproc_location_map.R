@@ -14,6 +14,7 @@ preproc_location_map_00 = function(df) {
 
     # Parse out tables
     hold = list()
+    box_name_seen = c()
 
     for (k in names(order_id_index)) {
         x = order_id_index[[k]]
@@ -28,7 +29,7 @@ preproc_location_map_00 = function(df) {
           
             # Grab box_type
             num_k = as.numeric(gsub("row_", "", k))
-            bt = df[num_k - 1, 1]
+            bt = df[num_k - 1, x[i]]
           
             bt_check = grep("Wells Box|DeNiro", bt)
             if (length(bt_check)==1) {
@@ -62,6 +63,14 @@ preproc_location_map_00 = function(df) {
           
             # Add box type
             df_sub[["Box Type"]] = bt
+          
+            for (b in unique(df_sub[["Box Name"]])) {
+                box_name_seen = c(box_name_seen, b)
+                n_b = sum(box_name_seen == b)
+                if (n_b > 1) {
+                    df_sub[["Box Name"]][df_sub[["Box Name"]] == b] = paste0(b, " (", n_b, ")")
+                }
+            }
           
             hold[[paste0(k, " | col_", x[i])]] = df_sub
         }

@@ -121,6 +121,8 @@ server = function(input, output, session) {
         
         # 2. merged sheets 
         mosp = sel_paths[grep("-merged-sheets.csv$", sel_paths)]
+        mosp_date = sub(".*([0-9]{4}-[0-9]{2}-[0-9]{2})-merged-sheets.csv$", "\\1", mosp)
+        mosp = mosp[rev(order(mosp_date))[1]]
         mosp_ = sapply(strsplit(mosp, "/"), function(x) x[length(x)])
         mosp_ = gsub("-merged-sheets.csv", "_merged-sheets.csv", mosp_)
         ms = read.csv(mosp, header = T, check.names = F)
@@ -219,126 +221,126 @@ server = function(input, output, session) {
             
             if (check1) {
                 showNotification(
-                    ui = paste("Entered order ID exists. Select 'Update' option for updates."),
+                    ui = paste("Entered order ID exists. A new merged sheet will be added."),
                     type = "message",
                     duration = 5
                 ) 
-            }else{
-                removeUI("#order_id_div")
-                removeUI("#goto_database_div")
-                
-                insertUI(
-                    selector = "#current_date",
-                    where = "afterEnd",
-                    ui = tags$div(
-                        id = "order_id_div",
-                        tags$p(paste0("Order ID: ",
-                                      input$order_id_text),
-                               class="text-secondary"),
-                        tags$p(""),
-                        actionButton(inputId="reset_form", 
-                                     label="Back to Frontpage",
-                                     width="100%",
-                                     disabled=FALSE),
-                        tags$div(id="below_reset_div"),
-                        tags$div(id="below_reset_div1")
-                    )
-                )
-                
-                clone_strategy_sheet_ui = tags$div(
-                    class="col",
-                    tags$p("Clone strategy",
-                           class="h5 text-primary fw-bold"),
-                    tags$div(
-                        id="clone_strategy_sheet_div"
-                    ),
-                    fileInput("clone_strategy_file",
-                              "Upload clone strategy sheet",
-                              width="100%"),
-                    actionButton("clone_strategy_preproc",
-                                 "Preprocess Clone Strategy",
+            }
+            
+            removeUI("#order_id_div")
+            removeUI("#goto_database_div")
+            
+            insertUI(
+                selector = "#current_date",
+                where = "afterEnd",
+                ui = tags$div(
+                    id = "order_id_div",
+                    tags$p(paste0("Order ID: ",
+                                  input$order_id_text),
+                           class="text-secondary"),
+                    tags$p(""),
+                    actionButton(inputId="reset_form", 
+                                 label="Back to Frontpage",
                                  width="100%",
-                                 class="btn-secondary"),
-                    tags$div(id="clone_strategy_preproc_bottom_div")
+                                 disabled=FALSE),
+                    tags$div(id="below_reset_div"),
+                    tags$div(id="below_reset_div1")
                 )
-                
-                order_summary_sheet_ui = tags$div(
-                    class="col",
-                    tags$p("Order summary",
+            )
+            
+            clone_strategy_sheet_ui = tags$div(
+                class="col",
+                tags$p("Clone strategy",
+                       class="h5 text-primary fw-bold"),
+                tags$div(
+                    id="clone_strategy_sheet_div"
+                ),
+                fileInput("clone_strategy_file",
+                          "Upload clone strategy sheet",
+                          width="100%"),
+                actionButton("clone_strategy_preproc",
+                             "Preprocess Clone Strategy",
+                             width="100%",
+                             class="btn-secondary"),
+                tags$div(id="clone_strategy_preproc_bottom_div")
+            )
+            
+            order_summary_sheet_ui = tags$div(
+                class="col",
+                tags$p("Order summary",
+                       class="h5 text-primary fw-bold"),
+                tags$div(
+                    id="order_summary_sheet_div"
+                ),
+                fileInput("order_summary_file",
+                          "Upload order summary sheet",
+                          width="100%"),
+                actionButton("order_summary_preproc",
+                             "Preprocess Order Summary",
+                             width="100%",
+                             class="btn-secondary",
+                             disabled=TRUE),
+                tags$div(id="order_summary_preproc_bottom_div")
+            )
+            
+            location_map_sheet_ui = tags$div(
+                class="col",
+                tags$p("Location map",
+                       class="h5 text-primary fw-bold"),
+                tags$div(
+                    id="location_map_sheet_div"
+                ),
+                fileInput("location_map_file",
+                          "Upload location map sheet",
+                          width="100%"),
+                actionButton("location_map_preproc",
+                             "Preprocess Location Map",
+                             width="100%",
+                             class="btn-secondary",
+                             disabled=TRUE),
+                tags$div(id="location_map_preproc_bottom_div")
+            )
+            
+            order_report_sheet_ui = tags$div(
+                class="col",
+                tags$div(
+                    id="order_report_sheet_div"
+                ),
+                tags$div(
+                    id="order_report_sheet_div1",
+                    tags$p("Order report",
                            class="h5 text-primary fw-bold"),
-                    tags$div(
-                        id="order_summary_sheet_div"
-                    ),
-                    fileInput("order_summary_file",
-                              "Upload order summary sheet",
-                              width="100%"),
-                    actionButton("order_summary_preproc",
-                                 "Preprocess Order Summary",
-                                 width="100%",
-                                 class="btn-secondary",
-                                 disabled=TRUE),
-                    tags$div(id="order_summary_preproc_bottom_div")
-                )
-                
-                location_map_sheet_ui = tags$div(
-                    class="col",
-                    tags$p("Location map",
-                           class="h5 text-primary fw-bold"),
-                    tags$div(
-                        id="location_map_sheet_div"
-                    ),
-                    fileInput("location_map_file",
-                              "Upload location map sheet",
-                              width="100%"),
-                    actionButton("location_map_preproc",
-                                 "Preprocess Location Map",
-                                 width="100%",
-                                 class="btn-secondary",
-                                 disabled=TRUE),
-                    tags$div(id="location_map_preproc_bottom_div")
-                )
-                
-                order_report_sheet_ui = tags$div(
-                    class="col",
                     tags$div(
                         id="order_report_sheet_div"
                     ),
-                    tags$div(
-                        id="order_report_sheet_div1",
-                        tags$p("Order report",
-                               class="h5 text-primary fw-bold"),
-                        tags$div(
-                            id="order_report_sheet_div"
-                        ),
-                        fileInput("order_report_file",
-                                  "Upload order report pdf",
-                                  width="100%"),
-                        actionButton("order_report_info",
-                                     "Get Report Information",
-                                     class="btn-secondary",
-                                     width="100%",
-                                     disabled=TRUE),
-                        tags$div(id="order_report_info_bottom_div")
-                    ),
-                )
-                
-                ui = tags$div(
-                    id = "main_contents2",
-                    class="row",
-                    clone_strategy_sheet_ui,
-                    order_summary_sheet_ui,
-                    location_map_sheet_ui,
-                    order_report_sheet_ui
-                )
+                    fileInput("order_report_file",
+                              "Upload order report pdf",
+                              width="100%"),
+                    actionButton("order_report_info",
+                                 "Get Report Information",
+                                 class="btn-secondary",
+                                 width="100%",
+                                 disabled=TRUE),
+                    tags$div(id="order_report_info_bottom_div")
+                ),
+            )
+            
+            ui = tags$div(
+                id = "main_contents2",
+                class="row",
+                clone_strategy_sheet_ui,
+                order_summary_sheet_ui,
+                location_map_sheet_ui,
+                order_report_sheet_ui
+            )
 
-                removeUI("#main_contents2")
-                
-                insertUI(
-                    selector="#main_contents",
-                    where="afterEnd",
-                    ui=ui
-                )
-            }
+            removeUI("#main_contents2")
+            
+            insertUI(
+                selector="#main_contents",
+                where="afterEnd",
+                ui=ui
+            )
         }
         
     }) |> bindEvent(input$submit_order_id)
@@ -1001,7 +1003,8 @@ server = function(input, output, session) {
             hold = list(input$clone_strategy_file,
                         input$order_summary_file,
                         input$location_map_file,
-                        input$order_report_file)
+                        input$order_report_file,
+                        input$order_metadata_file)
             
             for (i in 1:length(hold)) {
                 info = hold[[i]]
@@ -1216,7 +1219,8 @@ server = function(input, output, session) {
                     hold = list(input$clone_strategy_file,
                                 input$order_summary_file,
                                 input$location_map_file,
-                                input$order_report_file)
+                                input$order_report_file,
+                                input$order_metadata_file)
                     
                     for (i in 1:length(hold)) {
                         info = hold[[i]]

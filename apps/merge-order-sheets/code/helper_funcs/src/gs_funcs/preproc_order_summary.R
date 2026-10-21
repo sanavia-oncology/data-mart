@@ -13,6 +13,15 @@ preproc_order_summary = function(path) {
       if (k == "Endotoxin Level(EU/mg)") {
           x[x=="/"] = "0.0"
       }
+      if (k == "Unit(Tube)") {
+          comma = grepl(",", x)
+          if (any(comma)) {
+              x[comma] = sapply(lapply(strsplit(x[comma], ","), as.numeric), sum)
+          }
+      }
+      if (k == "Size-Volume(ml)") {
+          x[grepl(",", x)] = NA
+      }
       if (k == "Ship Temp") {
           df[[k]] = -1 * as.numeric(gsub("[^0-9.]", "", x))
       }else{
