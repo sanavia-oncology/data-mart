@@ -6,7 +6,7 @@ preproc_order_summary = function(path) {
   df = as.data.frame(tibl)
 
   SEL = colnames(df)
-  SEL = SEL[!SEL %in% c("Order ID", "Name", "Lot No", "Type", "Purification")]
+  SEL = SEL[!SEL %in% c("Order ID", "Name", "Lot No", "Type", "Purification", "Buffer")]
   
   for (k in SEL) {
       x = df[[k]]
@@ -31,6 +31,9 @@ preproc_order_summary = function(path) {
 
   colnames(df)[colnames(df) == "Ship Temp"] = "Ship Temp (Deg. Cels.)"
   df[["Purification"]] = gsub("™", "", df[["Purification"]])
+  if ("Buffer" %in% colnames(df)) {
+      df[["Buffer"]] = gsub("\\s*[,，]\\s*", ", ", trimws(df[["Buffer"]]))
+  }
   
   return(df)
 }

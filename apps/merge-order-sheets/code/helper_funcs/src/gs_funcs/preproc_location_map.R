@@ -48,14 +48,17 @@ preproc_location_map_00 = function(df) {
             colnames(df_sub) = df[num_k, col_sel]
           
             # Find data_end_index
-            data_end = (1:n_row)[-grep("^Box", df_sub[["Box Name"]])]
-            if (length(data_end) > 0) {
-                data_end_index = min(data_end) - 1
+            hdr_rows = as.numeric(gsub("row_", "", names(order_id_index)))
+            nxt = hdr_rows[hdr_rows > num_k]
+            if (length(nxt) > 0) {
+                data_end_index = min(nxt) - 2 - num_k
             }else{
-                data_end_index = n_row
+                data_end_index = nrow(df_sub)
             } 
           
             df_sub = df_sub[1:data_end_index,,drop=FALSE]
+            df_sub = df_sub[grep("^Box", df_sub[["Box Name"]]),,drop=FALSE]
+            if (nrow(df_sub) == 0) next
           
             # Drop NA column
             na_col_name = is.na(colnames(df_sub)) | colnames(df_sub) == ""
